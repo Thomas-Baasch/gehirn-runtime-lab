@@ -1,0 +1,69 @@
+name: GT05 GT12 Contract Roundtrip Prerequisite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/gt05-gt12-roundtrip-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  slm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download exact SLM wheel and verify frozen SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          python -m pip download --no-deps --only-binary=:all: superlocalmemory==4.0.8 -d downloads
+          WHEEL="$(find downloads -maxdepth 1 -name 'superlocalmemory-4.0.8-*.whl' -print -quit)"
+          printf '%s  %s\n' 'ed93780073c6a388dd26e0229609266fe7cd9475e72d9fac10c1d5005d1e1aef' "$WHEEL" | sha256sum --check -
+          python -m pip install --no-deps "$WHEEL"
+      - name: Run SLM prerequisite probe
+        run: python critical/gt05_gt12_contract_roundtrip.py --candidate slm --output reports/prereq/gt05_gt12_slm.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gt05-gt12-prereq-slm
+          path: reports/prereq/gt05_gt12_slm.json
+
+  memos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact MemOS release commit
+        run: python -m pip install "git+https://github.com/MemTensor/MemOS.git@f4db521214c29337164ec788bafede7eab236c25"
+      - name: Run MemOS prerequisite probe
+        run: python critical/gt05_gt12_contract_roundtrip.py --candidate memos --output reports/prereq/gt05_gt12_memos.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gt05-gt12-prereq-memos
+          path: reports/prereq/gt05_gt12_memos.json
+
+  everos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact EverOS release commit
+        run: python -m pip install "git+https://github.com/EverMind-AI/EverOS.git@48fc9084888bc17100053227284f939a5aca5e91"
+      - name: Run EverOS prerequisite probe
+        run: python critical/gt05_gt12_contract_roundtrip.py --candidate everos --output reports/prereq/gt05_gt12_everos.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gt05-gt12-prereq-everos
+          path: reports/prereq/gt05_gt12_everos.json
