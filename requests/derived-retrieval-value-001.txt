@@ -1,0 +1,3 @@
+Execute the frozen Derived Retrieval Substrate Value Gate Phase A bound to Drive contract 1P_jCU6lC6UB7QHblibDBDWyAVdHThN6T / SHA-256 193c756c8fcb07ed18335874a8b0383da172d6be9dfd37ffb4e0da5b0c87f0c6.
+
+Compare current MemoryOS/MemTensor MemOS 2.0.30 + qdrant-client 1.16.0 derived projection against direct qdrant-client 1.16.0 under the same product-neutral Canon, policy gates, deterministic vectors, records and queries. Phase A is structural only: do not claim real-world semantic quality. Rerun full 12/12 functional and 8/8 recovery regression in the same workflow. Synthetic data only. No final stack decision.
