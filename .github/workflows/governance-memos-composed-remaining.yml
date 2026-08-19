@@ -26,10 +26,21 @@ jobs:
         run: |
           python -c "import importlib.metadata as m; assert m.version('MemoryOS') == '2.0.30'"
           python -c "import importlib.metadata as m; assert m.version('qdrant-client') == '1.16.0'"
+      - name: Regression-check composed critical architecture gate
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_composed_gate.py
       - name: Execute remaining composed Golden Tests
         env:
           PYTHONPATH: .
         run: python critical/governance_memos_remaining_gate.py
+      - name: Upload composed critical regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-memos-composed-critical-regression-evidence
+          path: reports/composed/governance_memos_critical.json
+          if-no-files-found: error
       - name: Upload remaining composed evidence
         if: always()
         uses: actions/upload-artifact@v4
