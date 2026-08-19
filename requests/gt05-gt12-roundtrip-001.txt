@@ -1,0 +1,1 @@
+Execute GT-05/GT-12 contract-dimension roundtrip prerequisite probes for exact SLM 4.0.8, MemTensor/MemOS 2.0.30, and EverOS 1.2.3. Synthetic data only. This run must not be interpreted as a final Golden Test PASS/FAIL by itself.
