@@ -1,0 +1,35 @@
+name: EverOS GT08 Native Reflection Controls
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/everos-gt08-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  everos-gt08:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact EverOS release commit
+        run: >-
+          python -m pip install
+          "git+https://github.com/EverMind-AI/EverOS.git@48fc9084888bc17100053227284f939a5aca5e91"
+      - name: Verify runtime distribution identity
+        run: python -c "import importlib.metadata as m; assert m.version('everos') == '1.2.3'; import everos"
+      - name: Execute native GT-08 reflection controls
+        run: python critical/everos_gt08_controls.py
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: everos-gt08-native-evidence
+          path: reports/critical/everos_gt08_controls.json
+          if-no-files-found: error
