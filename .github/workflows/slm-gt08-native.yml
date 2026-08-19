@@ -1,0 +1,41 @@
+name: SLM GT08 Native Conflict Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "runtime/requests/slm-gt08-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  slm-gt08:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare pip
+        run: python -m pip install --upgrade pip
+      - name: Download exact SLM wheel and verify frozen SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          python -m pip download --no-deps --only-binary=:all: superlocalmemory==4.0.8 -d downloads
+          WHEEL="$(find downloads -maxdepth 1 -name 'superlocalmemory-4.0.8-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          printf '%s  %s\n' 'ed93780073c6a388dd26e0229609266fe7cd9475e72d9fac10c1d5005d1e1aef' "$WHEEL" | sha256sum --check -
+          python -m pip install "$WHEEL"
+      - name: Execute native GT-08 contradiction probe
+        run: python runtime/slm_gt08_native.py
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slm-gt08-native-evidence
+          path: reports/critical/slm_gt08_native.json
+          if-no-files-found: error
