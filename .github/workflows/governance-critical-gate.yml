@@ -1,0 +1,29 @@
+name: Product Neutral Canon Governance Critical Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/governance-critical-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  governance-critical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Execute critical product-neutral governance tests
+        run: python critical/governance_critical_gate.py
+      - name: Upload governance runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-neutral-governance-critical-evidence
+          path: reports/governance/product_neutral_critical_gate.json
+          if-no-files-found: error
