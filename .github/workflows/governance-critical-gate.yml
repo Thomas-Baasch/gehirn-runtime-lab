@@ -19,6 +19,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Execute critical product-neutral governance tests
+        env:
+          PYTHONPATH: .
         run: python critical/governance_critical_gate.py
       - name: Upload governance runtime evidence
         if: always()
