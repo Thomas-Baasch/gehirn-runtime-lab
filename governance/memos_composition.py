@@ -347,7 +347,14 @@ class GovernedMemOSService:
         return ("ALLOWED", allowed)
 
     def _sync(self) -> None:
+        # Project only records whose canonical representation is new or changed.
+        # This avoids rewriting unchanged Canon records into the derived MemOS index,
+        # while still re-projecting status/content changes caused by conflict,
+        # correction or explicit promotion.
         for record in self.gate.list_internal():
+            persisted = self.canonical.get(record.record_id)
+            if persisted == record:
+                continue
             self.canonical.put(record)
             self.index.put(record)
         history = list(self.gate.history)
