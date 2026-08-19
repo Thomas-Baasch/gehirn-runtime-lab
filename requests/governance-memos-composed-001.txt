@@ -1,0 +1,1 @@
+Execute the six critical end-to-end tests against the composed architecture: product-neutral FailClosedCanonRouter -> durable canonical SQLite truth -> policy-partitioned MemTensor/MemOS v2.0.30 derived Qdrant index. Synthetic data only. MemOS is not canonical truth. Do not interpret a composed PASS as a native MemOS product PASS or as full GT-01..GT-12 completion.
