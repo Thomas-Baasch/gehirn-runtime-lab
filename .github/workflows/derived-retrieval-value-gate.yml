@@ -1,0 +1,85 @@
+name: Derived Retrieval Substrate Value Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/derived-retrieval-value-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  phase-a-structural:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact MemOS release commit
+        run: python -m pip install "git+https://github.com/MemTensor/MemOS.git@f4db521214c29337164ec788bafede7eab236c25"
+      - name: Install pinned Qdrant client
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify runtime identity
+        run: |
+          python -c "import importlib.metadata as m; assert m.version('MemoryOS') == '2.0.30'"
+          python -c "import importlib.metadata as m; assert m.version('qdrant-client') == '1.16.0'"
+      - name: Verify frozen value-contract binding
+        run: |
+          python - <<'PY'
+          import json
+          b=json.load(open('contracts/derived_retrieval_value_binding_v0.1.json'))
+          assert b['external_contract_drive_id'] == '1P_jCU6lC6UB7QHblibDBDWyAVdHThN6T'
+          assert b['external_contract_sha256'] == '193c756c8fcb07ed18335874a8b0383da172d6be9dfd37ffb4e0da5b0c87f0c6'
+          assert b['phase'] == 'A_STRUCTURAL_ONLY'
+          PY
+      - name: Syntax-check direct baseline and value gate
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile governance/direct_qdrant_index.py critical/derived_retrieval_value_gate.py
+      - name: Regress composed critical six
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_composed_gate.py
+      - name: Regress composed remaining six
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_remaining_gate.py
+      - name: Regress composed recovery eight
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_recovery_gate.py
+      - name: Execute paired Phase-A derived retrieval value gate
+        env:
+          PYTHONPATH: .
+        run: python critical/derived_retrieval_value_gate.py
+      - name: Upload value evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: derived-retrieval-phase-a-value-evidence
+          path: reports/value/derived_retrieval_phase_a.json
+          if-no-files-found: error
+      - name: Upload critical regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-gate-critical-regression-evidence
+          path: reports/composed/governance_memos_critical.json
+          if-no-files-found: error
+      - name: Upload remaining regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-gate-remaining-regression-evidence
+          path: reports/composed/governance_memos_remaining.json
+          if-no-files-found: error
+      - name: Upload recovery regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-gate-recovery-regression-evidence
+          path: reports/composed/governance_memos_recovery.json
+          if-no-files-found: error
