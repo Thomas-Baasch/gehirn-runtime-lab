@@ -1,0 +1,3 @@
+Execute the product-neutral recovery/rebuild/fault-injection hard-gate after the composed GT-01..GT-12 12/12 PASS.
+
+Required checks: Canon and canonical history must survive an index-projection failure; exact retry must not duplicate Canon/history; a brand-new empty MemOS/Qdrant derived index must rebuild strictly from SQLite Canon; GT-08 conflicting/no-winner, GT-09 policy/no-leak and GT-12 recall/no-promotion invariants must survive rebuild; an index-only rogue payload must never become truth. Run unchanged critical and remaining Golden Tests as regression in the same workflow. Synthetic data only. No final stack decision.
