@@ -1,0 +1,1 @@
+Execute critical GT-04, GT-05, GT-06, GT-08, GT-09 and GT-12 against the separate product-neutral fail-closed Canon Router/Governance component. Synthetic data only. This test must not be interpreted as a candidate product PASS for SLM, MemOS or EverOS.
