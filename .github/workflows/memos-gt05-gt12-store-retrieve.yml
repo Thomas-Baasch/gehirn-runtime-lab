@@ -1,0 +1,37 @@
+name: MemOS GT05 GT12 Store Retrieve Component Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/memos-gt05-gt12-store-retrieve-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  memos-contract-store-retrieve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact MemOS release commit
+        run: python -m pip install "git+https://github.com/MemTensor/MemOS.git@f4db521214c29337164ec788bafede7eab236c25"
+      - name: Install officially supported local Qdrant dependency
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify runtime identities
+        run: |
+          python -c "import importlib.metadata as m; assert m.version('MemoryOS') == '2.0.30'"
+          python -c "import importlib.metadata as m; assert m.version('qdrant-client') == '1.16.0'"
+      - name: Execute native store/retrieve contract preservation probe
+        run: python critical/memos_gt05_gt12_store_retrieve.py
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memos-gt05-gt12-store-retrieve-evidence
+          path: reports/critical/memos_gt05_gt12_store_retrieve.json
+          if-no-files-found: error
