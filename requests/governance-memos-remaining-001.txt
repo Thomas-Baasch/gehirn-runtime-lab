@@ -1,0 +1,1 @@
+Execute remaining composed Golden Tests GT-01, GT-02, GT-03, GT-07, GT-10 and GT-11 after the critical composed 6/6 PASS. Architecture: product-neutral intake/registry/inbox/reference catalog -> FailClosedCanonRouter -> canonical SQLite truth -> policy-partitioned MemTensor/MemOS v2.0.30 Qdrant derived index. Synthetic data only. No final stack decision from this run alone.
