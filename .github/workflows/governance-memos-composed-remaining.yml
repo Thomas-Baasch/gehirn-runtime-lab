@@ -1,0 +1,39 @@
+name: Governance MemOS Composed Remaining Golden Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/governance-memos-remaining-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  composed-remaining:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact MemOS release commit
+        run: python -m pip install "git+https://github.com/MemTensor/MemOS.git@f4db521214c29337164ec788bafede7eab236c25"
+      - name: Install pinned local Qdrant dependency
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify candidate runtime identity
+        run: |
+          python -c "import importlib.metadata as m; assert m.version('MemoryOS') == '2.0.30'"
+          python -c "import importlib.metadata as m; assert m.version('qdrant-client') == '1.16.0'"
+      - name: Execute remaining composed Golden Tests
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_remaining_gate.py
+      - name: Upload remaining composed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-memos-composed-remaining-evidence
+          path: reports/composed/governance_memos_remaining.json
+          if-no-files-found: error
