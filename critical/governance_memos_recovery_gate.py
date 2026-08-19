@@ -177,6 +177,7 @@ def main() -> int:
             for event in canonical.events()
             if event.get("record_id") == crash_record.record_id
         ]
+        projection_missing_after_fault = not first_index.contains_current(crash_record)
         fi02_pass = (
             fault_raised
             and first_index.failure_count == 1
@@ -184,7 +185,7 @@ def main() -> int:
             and canonical.count() == baseline_count + 1
             and len(canonical.events()) == baseline_events + 1
             and len(crash_events_after_fault) == 1
-            and not first_index.contains_current(crash_record)
+            and projection_missing_after_fault
         )
 
         # Lost acknowledgement retry: exact same record must not duplicate Canon/history.
@@ -340,7 +341,7 @@ def main() -> int:
                 "fault_raised": fault_raised,
                 "canonical_record_survived": canon_after_fault == crash_record,
                 "canonical_history_event_survived": len(crash_events_after_fault) == 1,
-                "derived_projection_missing_after_fault": not first_index.contains_current(crash_record),
+                "derived_projection_missing_after_fault": projection_missing_after_fault,
             },
             "RECOVERY_RETRY_IDEMPOTENCY": {
                 "pass": retry_pass,
