@@ -1,0 +1,39 @@
+name: SLM GT06 Native Correction Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/slm-gt06-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  slm-gt06:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download exact SLM wheel and verify frozen SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          python -m pip download --no-deps --only-binary=:all: superlocalmemory==4.0.8 -d downloads
+          WHEEL="$(find downloads -maxdepth 1 -name 'superlocalmemory-4.0.8-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          printf '%s  %s\n' 'ed93780073c6a388dd26e0229609266fe7cd9475e72d9fac10c1d5005d1e1aef' "$WHEEL" | sha256sum --check -
+          python -m pip install --no-deps "$WHEEL"
+      - name: Execute native GT-06 correction/history probe
+        run: python critical/slm_gt06_correction.py
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slm-gt06-native-evidence
+          path: reports/critical/slm_gt06_correction.json
+          if-no-files-found: error
