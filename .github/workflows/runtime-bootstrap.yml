@@ -7,6 +7,11 @@ on:
     paths:
       - ".github/workflows/runtime-bootstrap.yml"
       - "runtime/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/runtime-bootstrap.yml"
+      - "runtime/**"
 
 permissions:
   contents: read
