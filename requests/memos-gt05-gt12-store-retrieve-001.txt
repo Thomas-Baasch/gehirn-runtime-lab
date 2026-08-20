@@ -1,0 +1,1 @@
+Execute MemTensor/MemOS v2.0.30 native GeneralTextMemory + local Qdrant contract-envelope persistence and repeated-recall probe. Synthetic data only. Component-role evidence only; do not claim full routing/classification GT-05/GT-12 PASS.
