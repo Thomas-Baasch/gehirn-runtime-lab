@@ -93,9 +93,15 @@ class DurableContinuationLedger:
                     self._audit(conn, "DUPLICATE_BLOCKED", item, {"status": status, "attempt_count": attempts})
                     conn.execute("COMMIT")
                     return "NOOP_DUPLICATE"
-                if status in {"CLAIMED", "RECONCILE_REQUIRED"}:
-                    if status == "CLAIMED":
-                        conn.execute("UPDATE dispatch_claims SET status='RECONCILE_REQUIRED', updated_at=CURRENT_TIMESTAMP WHERE dedupe_key=?", (item.dedupe_key,))
+                if status == "CLAIMED":
+                    # Critical ownership rule: a competing/restarted executor must
+                    # never mutate another executor's live/possibly-live claim.
+                    # It only observes the uncertainty and blocks redispatch. The
+                    # legitimate claim holder can still mark success/failure.
+                    self._audit(conn, "CLAIM_PRESENT_BLOCKED", item, {"status": status, "attempt_count": attempts})
+                    conn.execute("COMMIT")
+                    return "RECONCILE_REQUIRED"
+                if status == "RECONCILE_REQUIRED":
                     self._audit(conn, "RECONCILE_REQUIRED", item, {"previous_status": status, "attempt_count": attempts})
                     conn.execute("COMMIT")
                     return "RECONCILE_REQUIRED"
@@ -208,7 +214,8 @@ class DurableSafeContinuationExecutor:
 
         if self.after_claim_hook is not None:
             # A real hard crash here leaves CLAIMED in SQLite. On reopen the next
-            # executor will reconcile rather than blindly redispatch.
+            # executor sees the durable claim and returns RECONCILE_REQUIRED
+            # without mutating the claim or blindly redispatching.
             self.after_claim_hook(item)
 
         try:
