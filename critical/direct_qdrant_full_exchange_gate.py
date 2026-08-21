@@ -23,10 +23,16 @@ def run_gate(module_name: str, source_report: str, target_report: str, *, recove
             "import governance.memos_recovery as mr",
             "mr.RecoverablePartitionedMemOSIndex = DirectQdrantIndex",
         ]
-    bootstrap += [
-        f"import {module_name} as gate",
-        "raise SystemExit(gate.main())",
-    ]
+    bootstrap += [f"import {module_name} as gate"]
+    if recovery:
+        bootstrap += [
+            "assert gate.RecoverablePartitionedMemOSIndex is DirectQdrantIndex, 'direct_recovery_index_injection_failed'"
+        ]
+    else:
+        bootstrap += [
+            "assert gate.PartitionedMemOSIndex is DirectQdrantIndex, 'direct_index_injection_failed'"
+        ]
+    bootstrap += ["raise SystemExit(gate.main())"]
     env = dict(os.environ)
     env["PYTHONPATH"] = "."
     subprocess.run([sys.executable, "-c", ";".join(bootstrap)], check=True, env=env)
@@ -55,14 +61,17 @@ def main() -> int:
     )
 
     checks = {
+        "direct_backend_injection_asserted_before_each_gate": True,
         "direct_gt04_gt05_gt06_gt08_gt09_gt12": critical.get("result") == "PASS" and critical.get("passed") == 6,
         "direct_gt01_gt02_gt03_gt07_gt10_gt11": remaining.get("result") == "PASS" and remaining.get("passed") == 6,
         "direct_recovery_fault_injection": recovery.get("result") == "PASS" and recovery.get("passed") == 8,
     }
     summary = {
         "schema": "externes-gehirn.direct-qdrant-full-exchange-evidence",
-        "version": "0.1.0",
+        "version": "0.1.1",
         "backend": "direct qdrant-client 1.16.0",
+        "backend_injection_proof": "runtime assertion before each unchanged gate: gate index symbol is exactly governance.direct_qdrant_index.DirectQdrantIndex",
+        "nested_report_metadata_warning": "The reused gate JSON files retain historical static MemOS labels in descriptive fields. Those labels are not backend evidence; the wrapper runtime assertion proves DirectQdrantIndex was active while criteria/results remained unchanged.",
         "test_truth_reuse": "unchanged existing composed Golden Test and recovery gate modules; only derived-index class injected before module import",
         "critical": f"{critical.get('passed')}/{critical.get('total')}",
         "remaining": f"{remaining.get('passed')}/{remaining.get('total')}",
