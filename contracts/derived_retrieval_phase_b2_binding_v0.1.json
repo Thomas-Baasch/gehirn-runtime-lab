@@ -1,0 +1,29 @@
+{
+  "schema": "externes-gehirn.derived-retrieval-phase-b2-binding",
+  "version": "0.1.0",
+  "status": "FROZEN_BEFORE_RUNTIME",
+  "external_contract_drive_id": "150e64OPwqfFNk96-O0Q38DVD055nVi7ylgNqJ_bAR7E",
+  "external_contract_semantic_json_sha256": "c9de8f61ecabed89138aeae47ae5f6add8e48333f234eb8f7591f222d97a9ffc",
+  "inherits_phase_b_contract_drive_id": "1MZvw0Hn4FBciejld4pm0vHGzJo-9WYWN",
+  "inherits_phase_b_contract_sha256": "0569c29f3c30981dc0965715f740d204e6e129bb89dbb61fb1891fe764b889de",
+  "benchmark_path": "contracts/derived_retrieval_phase_b_benchmark_v0.1.py",
+  "benchmark_sha256": "8e06db355e7d53dda3774c38029b78112d1789ab354eff273e079c844f6bd869",
+  "dense_embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "dense_embedding_revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "reranker_model": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+  "reranker_revision": "1427fd652930e4ba29e8149678df786c240d8825",
+  "reranker_license": "apache-2.0",
+  "sentence_transformers_version": "5.7.0",
+  "sentence_transformers_wheel_sha256": "b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730",
+  "qdrant_client_version": "1.16.0",
+  "dense_top_n": 10,
+  "quality_floors": {"Recall@5": 0.90, "MRR@10": 0.80, "nDCG@10": 0.85},
+  "dense_baseline_expected": {"Recall@5": 1.0, "MRR@10": 0.538542, "nDCG@10": 0.654845, "Top1": 0.229167, "Recall@10": 1.0},
+  "safety": [
+    "project deny before dense/reranker",
+    "low clearance never exposes confidential candidate to reranker",
+    "index-only record never reaches reranker or Canon result",
+    "reranking is read-only and side-effect free"
+  ],
+  "scope": "Derived retrieval role only; no final External Brain stack decision"
+}
