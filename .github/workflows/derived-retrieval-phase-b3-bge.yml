@@ -1,0 +1,163 @@
+name: Derived Retrieval Phase B3 BGE Strong Reranker
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/derived-retrieval-phase-b3-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install direct backend only
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify MemoryOS remains absent
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Regress Direct-Qdrant 12/12 + 8/8 without MemoryOS
+        env:
+          PYTHONPATH: .
+        run: python critical/direct_qdrant_no_memoryos_gate.py
+      - name: Upload direct regression evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-b3-direct-regression
+          path: reports/direct_exchange/
+          if-no-files-found: error
+
+  phase-b3:
+    needs: direct-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download direct regression evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: phase-b3-direct-regression
+          path: preconditions/direct
+      - name: Install pinned Qdrant
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Download and verify exact sentence-transformers wheel
+        run: |
+          mkdir -p /tmp/stwheel
+          python -m pip download --no-deps --only-binary=:all: "sentence-transformers==5.7.0" -d /tmp/stwheel
+          python - <<'PY'
+          import glob, hashlib
+          files = glob.glob('/tmp/stwheel/*.whl')
+          assert len(files) == 1, files
+          actual = hashlib.sha256(open(files[0], 'rb').read()).hexdigest()
+          expected = 'b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730'
+          assert actual == expected, (actual, expected)
+          print('sentence-transformers wheel sha256', actual)
+          PY
+          python -m pip install --upgrade /tmp/stwheel/*.whl
+      - name: Verify runtime identity and MemoryOS absence
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert m.version('sentence-transformers') == '5.7.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Verify frozen B3 binding and inherited benchmark hash
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          b = json.load(open('contracts/derived_retrieval_phase_b3_binding_v0.1.json', encoding='utf-8'))
+          assert b['external_contract_drive_id'] == '1oy8qVNyDbNJeLhkrrlexj50--1GSNJTChFWOypY94Ek'
+          assert b['external_contract_file_sha256'] == '441f05dcf1f85a23501e27e3644c72b2c814c8832558f0a35bb6b39638baa12a'
+          assert b['external_contract_semantic_sha256'] == 'b5bfaad5e3d3ff19af4fc55b840f5a3ae150b9ee91848840f70d5438674e5333'
+          assert b['reranker_revision'] == '953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e'
+          actual = hashlib.sha256(open(b['benchmark_path'], 'rb').read()).hexdigest()
+          assert actual == b['benchmark_sha256'] == '8e06db355e7d53dda3774c38029b78112d1789ab354eff273e079c844f6bd869'
+          PY
+      - name: Syntax-check B3 gate
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile critical/derived_retrieval_phase_b3_bge_gate.py
+      - name: Execute frozen B3 strong-reranker gate
+        id: b3
+        env:
+          PYTHONPATH: .
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: |
+          set +e
+          python critical/derived_retrieval_phase_b3_bge_gate.py
+          rc=$?
+          if [ ! -f reports/value/derived_retrieval_phase_b3_bge.json ] && { [ "$rc" -eq 137 ] || [ "$rc" -eq 143 ]; }; then
+            mkdir -p reports/value
+            python - <<'PY'
+          import json, pathlib
+          report = {
+            'schema': 'externes-gehirn.derived-retrieval-phase-b3-bge-evidence',
+            'version': '0.1.0',
+            'result': 'BLOCKED_RESOURCE_OPERABILITY_EVIDENCE',
+            'error': 'runner_process_terminated_before_evidence; probable memory/resource termination',
+            'contract': {
+              'drive_id': '1oy8qVNyDbNJeLhkrrlexj50--1GSNJTChFWOypY94Ek',
+              'file_sha256': '441f05dcf1f85a23501e27e3644c72b2c814c8832558f0a35bb6b39638baa12a'
+            },
+            'reranker': {'repository': 'BAAI/bge-reranker-v2-m3', 'revision': '953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e'},
+            'stack_decision': 'NOT_MADE'
+          }
+          pathlib.Path('reports/value/derived_retrieval_phase_b3_bge.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+          fi
+          echo "script_exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload B3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: derived-retrieval-phase-b3-bge-evidence
+          path: |
+            reports/value/derived_retrieval_phase_b3_bge.json
+            contracts/derived_retrieval_phase_b3_binding_v0.1.json
+            contracts/derived_retrieval_phase_b_benchmark_v0.1.py
+          if-no-files-found: error
+      - name: Enforce B3 result after evidence upload
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path('reports/value/derived_retrieval_phase_b3_bge.json')
+          if not path.exists():
+              raise SystemExit('B3 evidence missing; harness/infrastructure failure')
+          report = json.loads(path.read_text(encoding='utf-8'))
+          result = report.get('result')
+          print('B3 result:', result)
+          print('Role decision:', report.get('role_decision'))
+          if isinstance(result, str) and result.startswith('BLOCKED_'):
+              sys.exit(2)
+          if result != 'PASS':
+              sys.exit(1)
+          PY
