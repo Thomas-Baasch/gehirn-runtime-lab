@@ -1,0 +1,139 @@
+name: Derived Retrieval Phase B2 Reranker
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/derived-retrieval-phase-b2-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install direct backend only
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify MemoryOS remains absent
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Regress Direct-Qdrant 12/12 + 8/8 without MemoryOS
+        env:
+          PYTHONPATH: .
+        run: python critical/direct_qdrant_no_memoryos_gate.py
+      - name: Upload direct regression evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-b2-direct-regression
+          path: reports/direct_exchange/
+          if-no-files-found: error
+
+  phase-b2:
+    needs: direct-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download direct regression evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: phase-b2-direct-regression
+          path: preconditions/direct
+      - name: Install pinned Qdrant
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Download and verify exact sentence-transformers wheel
+        run: |
+          mkdir -p /tmp/stwheel
+          python -m pip download --no-deps --only-binary=:all: "sentence-transformers==5.7.0" -d /tmp/stwheel
+          python - <<'PY'
+          import glob, hashlib
+          files = glob.glob('/tmp/stwheel/*.whl')
+          assert len(files) == 1, files
+          actual = hashlib.sha256(open(files[0], 'rb').read()).hexdigest()
+          expected = 'b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730'
+          assert actual == expected, (actual, expected)
+          print('sentence-transformers wheel sha256', actual)
+          PY
+          python -m pip install --upgrade /tmp/stwheel/*.whl
+      - name: Verify runtime identity and MemoryOS absence
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert m.version('sentence-transformers') == '5.7.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Verify frozen B2 binding and inherited benchmark hash
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          b = json.load(open('contracts/derived_retrieval_phase_b2_binding_v0.1.json', encoding='utf-8'))
+          assert b['external_contract_drive_id'] == '150e64OPwqfFNk96-O0Q38DVD055nVi7ylgNqJ_bAR7E'
+          assert b['external_contract_semantic_json_sha256'] == 'c9de8f61ecabed89138aeae47ae5f6add8e48333f234eb8f7591f222d97a9ffc'
+          assert b['reranker_revision'] == '1427fd652930e4ba29e8149678df786c240d8825'
+          actual = hashlib.sha256(open(b['benchmark_path'], 'rb').read()).hexdigest()
+          assert actual == b['benchmark_sha256'] == '8e06db355e7d53dda3774c38029b78112d1789ab354eff273e079c844f6bd869'
+          PY
+      - name: Syntax-check B2 gate
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile critical/derived_retrieval_phase_b2_reranker_gate.py
+      - name: Execute frozen B2 reranker gate
+        id: b2
+        continue-on-error: true
+        env:
+          PYTHONPATH: .
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: python critical/derived_retrieval_phase_b2_reranker_gate.py
+      - name: Upload B2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: derived-retrieval-phase-b2-reranker-evidence
+          path: |
+            reports/value/derived_retrieval_phase_b2_reranker.json
+            contracts/derived_retrieval_phase_b2_binding_v0.1.json
+            contracts/derived_retrieval_phase_b_benchmark_v0.1.py
+          if-no-files-found: error
+      - name: Enforce B2 result after evidence upload
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path('reports/value/derived_retrieval_phase_b2_reranker.json')
+          if not path.exists():
+              raise SystemExit('B2 evidence missing')
+          report = json.loads(path.read_text(encoding='utf-8'))
+          result = report.get('result')
+          print('B2 result:', result)
+          print('Role decision:', report.get('role_decision'))
+          if isinstance(result, str) and result.startswith('BLOCKED_'):
+              sys.exit(2)
+          if result != 'PASS':
+              sys.exit(1)
+          PY
