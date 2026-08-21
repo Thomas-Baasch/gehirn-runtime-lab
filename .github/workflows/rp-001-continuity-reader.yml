@@ -29,8 +29,6 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14.7'
@@ -66,7 +64,8 @@ jobs:
       - name: Confirm protected files remain byte-identical to base main
         run: |
           set -euo pipefail
-          git diff --exit-code d3c2dc68eacfac605b38c2067199339068f20050 -- continuity/brain-continuity-contract.json continuity/brain_continuity_supervisor.py
+          test "$(git hash-object continuity/brain-continuity-contract.json)" = "aecbea10d40c712f65fc49de40596404e0e393a0"
+          test "$(git hash-object continuity/brain_continuity_supervisor.py)" = "a5fb19a3dccc5c3df3122da06bd27ad0457a5bc3"
       - name: Publish success status
         if: success() && github.event_name != 'pull_request'
         env:
