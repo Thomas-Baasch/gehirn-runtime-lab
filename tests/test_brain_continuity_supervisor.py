@@ -23,7 +23,7 @@ def contract(policy="AUTONOMOUS_EXPECTED_WHEN_NEXT_CONTRACT_FROZEN"):
         progress_markers=("phase c", "truth-aware", "answer-set"),
         branch="main",
         status_issue=21,
-        stale_after_seconds=900,
+        stale_after_seconds=1800,
     )
 
 
@@ -31,7 +31,7 @@ class BrainContinuityTests(unittest.TestCase):
     def test_active_run_means_working(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 6, 0, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 6, 15, tzinfo=timezone.utc),
             active_run_count=1,
             recent_commits=[],
         )
@@ -41,7 +41,7 @@ class BrainContinuityTests(unittest.TestCase):
     def test_matching_phase_c_commit_after_freeze_confirms_progress(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 6, 0, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 6, 15, tzinfo=timezone.utc),
             active_run_count=0,
             recent_commits=[
                 mod.CommitObservation(
@@ -55,7 +55,7 @@ class BrainContinuityTests(unittest.TestCase):
     def test_matching_old_commit_does_not_count(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 6, 0, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 6, 15, tzinfo=timezone.utc),
             active_run_count=0,
             recent_commits=[
                 mod.CommitObservation(
@@ -69,7 +69,7 @@ class BrainContinuityTests(unittest.TestCase):
     def test_non_matching_commit_does_not_hide_gap(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 6, 0, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 6, 15, tzinfo=timezone.utc),
             active_run_count=0,
             recent_commits=[
                 mod.CommitObservation(
@@ -80,28 +80,28 @@ class BrainContinuityTests(unittest.TestCase):
         )
         self.assertEqual(decision.state, mod.ContinuityState.EXECUTION_GAP)
 
-    def test_first_15_minutes_are_grace(self):
+    def test_first_30_minutes_are_grace(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 5, 40, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 5, 50, tzinfo=timezone.utc),
             active_run_count=0,
             recent_commits=[],
         )
         self.assertEqual(decision.state, mod.ContinuityState.GRACE)
 
-    def test_exact_15_minute_boundary_is_grace(self):
+    def test_exact_30_minute_boundary_is_grace(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 5, 46, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 6, 1, tzinfo=timezone.utc),
             active_run_count=0,
             recent_commits=[],
         )
         self.assertEqual(decision.state, mod.ContinuityState.GRACE)
 
-    def test_after_15_minutes_without_execution_is_gap(self):
+    def test_after_30_minutes_without_execution_is_gap(self):
         decision = mod.evaluate(
             contract(),
-            now=datetime(2026, 8, 21, 5, 46, 1, tzinfo=timezone.utc),
+            now=datetime(2026, 8, 21, 6, 1, 1, tzinfo=timezone.utc),
             active_run_count=0,
             recent_commits=[],
         )
@@ -140,6 +140,7 @@ class BrainContinuityTests(unittest.TestCase):
         data = (Path(__file__).resolve().parents[1] / "continuity" / "brain-continuity-contract.json").read_text(encoding="utf-8")
         self.assertIn('"dispatch_workflow": false', data)
         self.assertIn('"merge": false', data)
+        self.assertIn('"stale_after_seconds": 1800', data)
 
 
 if __name__ == "__main__":
