@@ -22,11 +22,12 @@ def _tokens(text: str) -> set[str]:
 def subject_identity_matches(query: str, subject: str) -> bool:
     """Conservatively confirm that a retrieved subject is named in the query.
 
-    Exact token overlap is preferred. German compounds are also accepted when a
-    distinctive subject token (>=5 chars) is wholly contained in one query token
-    or vice versa, e.g. `Mieter` + `Übergabe` inside `Mieterübergabe`. This is a
-    locator guard only: it can reject an anchor, but it never creates or changes
-    canonical truth/status.
+    Exact token overlap is preferred. For German compounds, the fallback is
+    deliberately stricter: at least TWO distinctive canonical subject tokens
+    (>=5 chars) must each be fully contained in query tokens. This accepts
+    `Mieter` + `Übergabe` inside `Mieterübergabe`, but a generic fragment such
+    as `Datum` or a lone `Wochen` can never confirm an unrelated subject.
+    This guard may reject an anchor; it never creates or changes canonical truth.
     """
     query_tokens = _tokens(query)
     subject_tokens = _tokens(subject) - _GENERIC_SUBJECT_TOKENS
@@ -36,9 +37,12 @@ def subject_identity_matches(query: str, subject: str) -> bool:
         return True
     distinctive_subject = {token for token in subject_tokens if len(token) >= 5}
     distinctive_query = {token for token in query_tokens if len(token) >= 5}
-    return any(subject_token in query_token or query_token in subject_token
-               for subject_token in distinctive_subject
-               for query_token in distinctive_query)
+    matched_subject_tokens = {
+        subject_token
+        for subject_token in distinctive_subject
+        if any(subject_token in query_token for query_token in distinctive_query)
+    }
+    return len(matched_subject_tokens) >= 2
 
 
 @dataclass(frozen=True)
