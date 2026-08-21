@@ -1,0 +1,40 @@
+name: M5 Downstream Reconciliation V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'governance/downstream_reconciliation.py'
+      - 'critical/m5_downstream_reconciliation_v1_gate.py'
+      - '.github/workflows/m5-downstream-reconciliation-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  m5-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile governance/downstream_reconciliation.py critical/m5_downstream_reconciliation_v1_gate.py
+      - name: Regression durable ledger V1
+        run: python critical/durable_continuation_ledger_v1_gate.py
+      - name: Execute frozen downstream reconciliation gate
+        run: python critical/m5_downstream_reconciliation_v1_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-downstream-reconciliation-v1-evidence
+          path: |
+            reports/continuation/durable_continuation_ledger_v1.json
+            reports/continuation/m5_downstream_reconciliation_v1.json
+          if-no-files-found: error
