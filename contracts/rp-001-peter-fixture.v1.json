@@ -1,0 +1,27 @@
+{
+  "contract_version": "rp-001.v1",
+  "project_id": "PETER-SELF-001",
+  "home_system": "PETER",
+  "authoritative_status_ref": "github:Thomas-Baasch/peter-system-code#issue-19",
+  "current_work_id": "RP-001",
+  "work_state": "READY",
+  "continuation_policy": "AUTONOMOUS_EXPECTED",
+  "owner_gate": "NONE",
+  "next_contract_ref": "github:Thomas-Baasch/peter-system-code#issue-19:second-home-system",
+  "next_meaningful_step": "Prove External Brain reader/projection compatibility without writer or dispatch authority",
+  "last_progress_evidence": [
+    "run:32517661529:SUCCESS",
+    "commit:c895f8745b3d7285da5eb7c1af896680903fd681"
+  ],
+  "active_run_refs": [],
+  "source_health": "FRESH",
+  "observed_at": "2026-08-21T19:17:12Z",
+  "checked_at": "2026-08-21T19:20:00Z",
+  "classifier_version": "rp001-evaluator-v1",
+  "scope": "PROJECT_CONTINUITY",
+  "purpose": "STATUS_AND_CONTINUATION_POLICY",
+  "sensitivity": "INTERNAL",
+  "blocked_reason": null,
+  "decision_ref": null,
+  "supersedes_contract_ref": null
+}
