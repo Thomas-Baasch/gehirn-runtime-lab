@@ -1,0 +1,135 @@
+name: Derived Retrieval Phase C Truth-Aware Answer Set
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/derived-retrieval-phase-c-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-no-memoryos-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install direct backend only
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify MemoryOS remains absent
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Regress Direct-Qdrant 12/12 + 8/8 without MemoryOS
+        env:
+          PYTHONPATH: .
+        run: python critical/direct_qdrant_no_memoryos_gate.py
+      - name: Upload direct regression evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-c-direct-regression
+          path: reports/direct_exchange/
+          if-no-files-found: error
+
+  phase-c:
+    needs: direct-no-memoryos-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download direct regression evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: phase-c-direct-regression
+          path: preconditions/direct
+      - name: Install pinned Qdrant
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Download and verify exact sentence-transformers wheel
+        run: |
+          mkdir -p /tmp/stwheel
+          python -m pip download --no-deps --only-binary=:all: "sentence-transformers==5.7.0" -d /tmp/stwheel
+          python - <<'PY'
+          import glob, hashlib
+          files = glob.glob('/tmp/stwheel/*.whl')
+          assert len(files) == 1, files
+          actual = hashlib.sha256(open(files[0], 'rb').read()).hexdigest()
+          expected = 'b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730'
+          assert actual == expected, (actual, expected)
+          print('sentence-transformers wheel sha256', actual)
+          PY
+          python -m pip install --upgrade /tmp/stwheel/*.whl
+      - name: Verify runtime identity and MemoryOS absence
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert m.version('sentence-transformers') == '5.7.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Verify frozen Phase C binding and benchmark hash
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          b=json.load(open('contracts/derived_retrieval_phase_c_binding_v0.1.json',encoding='utf-8'))
+          assert b['external_contract_drive_id']=='1sF5t2XKJJywjuaRMfaUKodUR_OAwGuZfybstXeqitM8'
+          assert b['external_contract_file_sha256']=='1e1e56ff6fc52484af8e198c36e32554642dab21b0e777bb33f7ba6dea9b6768'
+          actual=hashlib.sha256(open(b['benchmark_path'],'rb').read()).hexdigest()
+          assert actual==b['benchmark_sha256']=='18e78af3ee4248ced23d566b94210cc0576e46251674a0c14d68c05f49dee231', actual
+          PY
+      - name: Syntax-check Phase C
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile governance/truth_aware_answer_set.py critical/derived_retrieval_phase_c_truth_aware_gate.py contracts/derived_retrieval_phase_c_benchmark_v0.1.py
+      - name: Execute frozen Phase C gate
+        id: phase_c
+        continue-on-error: true
+        env:
+          PYTHONPATH: .
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: python critical/derived_retrieval_phase_c_truth_aware_gate.py
+      - name: Upload Phase C evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: derived-retrieval-phase-c-truth-aware-evidence
+          path: |
+            reports/value/derived_retrieval_phase_c_truth_aware.json
+            contracts/derived_retrieval_phase_c_binding_v0.1.json
+            contracts/derived_retrieval_phase_c_benchmark_v0.1.py
+          if-no-files-found: error
+      - name: Enforce Phase C result after evidence upload
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          path=pathlib.Path('reports/value/derived_retrieval_phase_c_truth_aware.json')
+          if not path.exists(): raise SystemExit('Phase C evidence missing')
+          report=json.loads(path.read_text(encoding='utf-8'))
+          result=report.get('result')
+          print('Phase C result:',result)
+          print('Role decision:',report.get('role_decision'))
+          if isinstance(result,str) and result.startswith('BLOCKED_'): sys.exit(2)
+          if result!='PASS': sys.exit(1)
+          PY

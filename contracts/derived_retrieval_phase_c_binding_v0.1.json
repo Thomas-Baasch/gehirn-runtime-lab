@@ -1,0 +1,25 @@
+{
+  "schema": "externes-gehirn.phase-c-binding",
+  "version": "0.1.0",
+  "status": "FROZEN_BEFORE_RUNTIME",
+  "external_contract_drive_id": "1sF5t2XKJJywjuaRMfaUKodUR_OAwGuZfybstXeqitM8",
+  "external_contract_file_sha256": "1e1e56ff6fc52484af8e198c36e32554642dab21b0e777bb33f7ba6dea9b6768",
+  "benchmark_path": "contracts/derived_retrieval_phase_c_benchmark_v0.1.py",
+  "benchmark_sha256": "18e78af3ee4248ced23d566b94210cc0576e46251674a0c14d68c05f49dee231",
+  "dense_embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "dense_embedding_revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "sentence_transformers_version": "5.7.0",
+  "sentence_transformers_wheel_sha256": "b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730",
+  "qdrant_client_version": "1.16.0",
+  "acceptance": {
+    "subject_anchor_recall_at_5_min": 0.95,
+    "conflict_queries": "16/16",
+    "correction_queries": "16/16",
+    "current_queries": "8/8",
+    "empty_unknown_queries": "8/8",
+    "policy_integrity": "all",
+    "direct_no_memoryos_regression": "12/12+8/8"
+  },
+  "implementation_guard": "subject identity confirmation is lexical against canonical bilingual subject labels; it may reject uncertain anchors but may never create truth or override Canon",
+  "scope": "derived locator + product-neutral truth-aware answer-set only; no final stack decision"
+}

@@ -1,0 +1,1 @@
+Execute the externally frozen Phase C truth-aware answer-set contract exactly. Preserve all prior routing, recovery, authorization and no-MemoryOS gates. Do not relax thresholds, do not guess a semantic winner for unresolved conflicts, and do not make a final stack decision.
