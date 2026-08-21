@@ -28,6 +28,8 @@ class ContinuityState(str, Enum):
 @dataclass(frozen=True)
 class Contract:
     policy: str
+    expected_title: str
+    expected_drive_id: str
     frozen_at: datetime
     progress_markers: tuple[str, ...]
     branch: str
@@ -84,6 +86,10 @@ def load_contract(path: Path = CONTRACT_PATH) -> Contract:
     markers = expected.get("progress_markers")
     if not isinstance(markers, list) or not markers or not all(_norm(x) for x in markers):
         raise RuntimeErrorSafe("progress_markers_invalid")
+    expected_title = _norm(expected.get("title"))
+    expected_drive_id = _norm(expected.get("drive_id"))
+    if not expected_title or not expected_drive_id:
+        raise RuntimeErrorSafe("expected_contract_identity_missing")
     issue = int(watch.get("status_issue") or 0)
     stale = int(watch.get("stale_after_seconds") or 0)
     branch = _norm(watch.get("branch"))
@@ -91,6 +97,8 @@ def load_contract(path: Path = CONTRACT_PATH) -> Contract:
         raise RuntimeErrorSafe("watch_contract_invalid")
     return Contract(
         policy=_norm(payload.get("continuation_policy")),
+        expected_title=expected_title,
+        expected_drive_id=expected_drive_id,
         frozen_at=_parse_dt(_norm(expected.get("frozen_at_utc"))),
         progress_markers=tuple(_norm(x).casefold() for x in markers),
         branch=branch,
@@ -104,6 +112,20 @@ def _commit_matches(commit: CommitObservation, contract: Contract) -> bool:
         return False
     message = commit.message.casefold()
     return any(marker in message for marker in contract.progress_markers)
+
+
+def _fresh_matching_progress(
+    contract: Contract,
+    *,
+    now: datetime,
+    recent_commits: Sequence[CommitObservation],
+) -> CommitObservation | None:
+    matching = [commit for commit in recent_commits if _commit_matches(commit, contract)]
+    if not matching:
+        return None
+    latest = max(matching, key=lambda commit: commit.committed_at)
+    age = max(0, int((now.astimezone(timezone.utc) - latest.committed_at).total_seconds()))
+    return latest if age <= contract.stale_after_seconds else None
 
 
 def evaluate(
@@ -122,16 +144,25 @@ def evaluate(
     if active_run_count > 0:
         return Decision(ContinuityState.WORKING, "active_non_supervisor_run_present", active_run_count)
 
-    if any(_commit_matches(commit, contract) for commit in recent_commits):
-        return Decision(ContinuityState.PROGRESS_CONFIRMED, "phase_progress_commit_after_freeze", 0)
+    if _fresh_matching_progress(contract, now=now, recent_commits=recent_commits) is not None:
+        return Decision(ContinuityState.PROGRESS_CONFIRMED, "fresh_matching_progress_commit", 0)
 
-    age = max(0, int((now.astimezone(timezone.utc) - contract.frozen_at).total_seconds()))
-    if age <= contract.stale_after_seconds:
+    matching = [commit for commit in recent_commits if _commit_matches(commit, contract)]
+    if matching:
+        return Decision(
+            ContinuityState.EXECUTION_GAP,
+            "matching_progress_commit_stale_without_active_run",
+            0,
+            dispatch_allowed=False,
+        )
+
+    contract_age = max(0, int((now.astimezone(timezone.utc) - contract.frozen_at).total_seconds()))
+    if contract_age <= contract.stale_after_seconds:
         return Decision(ContinuityState.GRACE, "frozen_contract_within_grace_period", 0)
 
     return Decision(
         ContinuityState.EXECUTION_GAP,
-        "frozen_next_contract_without_active_run_or_matching_progress_commit",
+        "frozen_next_contract_without_active_run_or_fresh_matching_progress",
         0,
         dispatch_allowed=False,
     )
@@ -247,11 +278,13 @@ def _status_body(decision: Decision, contract: Contract, *, now: datetime) -> st
             f"**Continuation policy:** `{contract.policy}`",
             f"**Aktive fachliche Runs:** {decision.active_run_count}",
             f"**Grund:** `{decision.reason}`",
-            "**Nächster fachlicher Vertrag:** Phase C – Truth-Aware Answer-Set (extern frozen before runtime)",
-            "**Automatischer beliebiger Entwicklungs-Dispatch:** NEIN – kein verifizierter Executor vorhanden.",
+            f"**Nächster fachlicher Vertrag:** {contract.expected_title}",
+            f"**Vertragsquelle:** Drive `{contract.expected_drive_id}`",
+            "**Automatischer beliebiger Entwicklungs-Dispatch:** NEIN – kein verifizierter Live-Executor vorhanden.",
             f"**Thomas muss:** {thomas}",
             f"**Letzte Prüfung:** {now.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             "",
+            "Ein alter Fortschrittscommit darf den Status höchstens für das konfigurierte Freshness-Fenster grün halten.",
             "Keine Stackentscheidung, keine Threshold-Absenkung, kein Merge und keine Außenwirkung aus diesem Supervisor.",
         ]
     )
