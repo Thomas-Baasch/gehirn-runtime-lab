@@ -1,0 +1,1 @@
+Execute the externally frozen M5 Durable Continuation Ledger V1 crash/restart contract exactly. Synthetic callbacks only. Prove durable dedupe/audit, restart safety, uncertain-outcome reconciliation, retry/circuit limits and 10,000 repeated claims without duplicate dispatch. No real Home-System dispatch authority.
