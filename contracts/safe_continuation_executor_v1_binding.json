@@ -1,0 +1,14 @@
+{
+  "schema": "externes-gehirn.safe-continuation-executor-binding",
+  "version": "0.1.0",
+  "status": "FROZEN_BEFORE_RUNTIME",
+  "external_contract_drive_id": "1xtyngTOQAy6QfcDddje_HInAIBZfz5NstB9QdGmT0c4",
+  "external_contract_sha256": "b437d928e0aa27839d0179da6a968d783324bcf41580c50079592d667d56c124",
+  "external_contract_size_bytes": 4550,
+  "allowed_dispatch_actions": ["INTERNAL_CONTINUE", "INTERNAL_RECOVERY"],
+  "forbidden_automatic_actions": ["MERGE", "EXTERNAL_SEND", "PAYMENT", "DELETE", "PERMISSION_CHANGE", "POLICY_CHANGE", "PRODUCTION_PUBLISH"],
+  "deterministic_cases": 20,
+  "randomized_cases": 100000,
+  "required_random_forbidden_dispatches": 0,
+  "scope": "synthetic lab only; no real Home-System dispatch authority"
+}

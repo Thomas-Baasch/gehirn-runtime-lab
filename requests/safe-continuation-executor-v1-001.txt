@@ -1,0 +1,1 @@
+Execute the externally frozen Safe Continuation Executor V1 fail-closed lab contract exactly. Synthetic callback only. No real Home-System dispatch, no merge, no external send, no payment, no delete, no permission/policy change and no production effect.
