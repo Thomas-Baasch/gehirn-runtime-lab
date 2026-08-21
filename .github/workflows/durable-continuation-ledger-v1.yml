@@ -1,0 +1,48 @@
+name: M5 Durable Continuation Ledger V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/durable-continuation-ledger-v1-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  durable-ledger-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify frozen contract binding
+        run: |
+          python - <<'PY'
+          import json
+          b=json.load(open('contracts/durable_continuation_ledger_v1_binding.json',encoding='utf-8'))
+          assert b['external_contract_drive_id']=='1pzUowtAZXeEGbcK7M6FancTiR-B3d_f3Y1KOzgJMqB4'
+          assert b['external_contract_sha256']=='c526614c461434afb2b191fea586c5e152bcedf8e2a32de5e780bcf4b1d7edd4'
+          assert b['deterministic_cases_min']==12
+          assert b['stress_claim_attempts_min']==10000
+          assert b['required_duplicate_successful_claims']==0
+          PY
+      - name: Syntax-check durable ledger and gate
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile governance/durable_continuation_ledger.py critical/durable_continuation_ledger_v1_gate.py
+      - name: Execute crash/restart and 10k stress gate
+        env:
+          PYTHONPATH: .
+        run: python critical/durable_continuation_ledger_v1_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: durable-continuation-ledger-v1-evidence
+          path: |
+            reports/continuation/durable_continuation_ledger_v1.json
+            contracts/durable_continuation_ledger_v1_binding.json
+          if-no-files-found: error
