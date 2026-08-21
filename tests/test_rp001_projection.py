@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import importlib.util
 import json
 from pathlib import Path
@@ -88,6 +87,16 @@ class RP001ExternalBrainProjectionTests(unittest.TestCase):
         self.assertEqual(projection.state(), mod.ProjectionState.OWNER_DECISION_K2)
         self.assertFalse(projection.dispatch_authority)
 
+    def test_owner_required_without_real_gate_fails_closed_like_peter(self):
+        for owner_gate in ("NONE", "NO", "FALSE"):
+            with self.subTest(owner_gate=owner_gate):
+                with self.assertRaisesRegex(mod.ProjectionError, "owner_required_without_owner_gate"):
+                    mod.read_rp001(rp_payload(continuation_policy="OWNER_REQUIRED", owner_gate=owner_gate))
+
+    def test_blank_optional_reference_fails_closed_like_peter(self):
+        with self.assertRaisesRegex(mod.ProjectionError, "next_contract_ref_must_be_non_blank_or_null"):
+            mod.read_rp001(rp_payload(next_contract_ref=" "))
+
     def test_parked_and_manual_do_not_become_recovery_candidates(self):
         for policy in ("PARKED", "MANUAL_ON_DEMAND"):
             with self.subTest(policy=policy):
@@ -105,6 +114,25 @@ class RP001ExternalBrainProjectionTests(unittest.TestCase):
     def test_unknown_version_fails_closed(self):
         with self.assertRaises(mod.ProjectionError):
             mod.read_rp001(rp_payload(contract_version="rp-002.future"))
+
+    def test_peter_common_golden_matrix_has_semantic_equivalence(self):
+        fixture = json.loads((ROOT / "continuity" / "rp001-peter-common-golden.v1.json").read_text(encoding="utf-8"))
+        self.assertEqual(fixture["fixture_version"], "rp-001.cross-system-common.v1")
+        self.assertEqual(fixture["source"]["repository"], "Thomas-Baasch/peter-system-code")
+        self.assertEqual(fixture["source"]["commit"], "c895f8745b3d7285da5eb7c1af896680903fd681")
+        self.assertEqual(fixture["source"]["test_blob_sha"], "3511a0146e2716f091ea4979bfe8ef49491b9b8f")
+        for case in fixture["cases"]:
+            with self.subTest(case=case["id"]):
+                projection = mod.read_rp001(rp_payload(**case["changes"]))
+                self.assertEqual(projection.state().value, case["expected_classification"])
+
+    def test_peter_only_semantics_are_not_silently_claimed_by_projection(self):
+        fixture = json.loads((ROOT / "continuity" / "rp001-peter-common-golden.v1.json").read_text(encoding="utf-8"))
+        peter_only = fixture["role_boundary"]["peter_only"]
+        self.assertEqual(len(peter_only), 3)
+        self.assertTrue(any(item.startswith("C-05") for item in peter_only))
+        self.assertTrue(any(item.startswith("C-08") for item in peter_only))
+        self.assertTrue(any(item.startswith("C-12") for item in peter_only))
 
     def test_current_brain_contract_maps_to_rp001_without_modifying_source(self):
         path = ROOT / "continuity" / "brain-continuity-contract.json"

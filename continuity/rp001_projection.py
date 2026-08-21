@@ -85,8 +85,20 @@ class RP001Projection:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ProjectionError(f"{name}_required")
+        for name in (
+            "next_contract_ref",
+            "next_meaningful_step",
+            "blocked_reason",
+            "decision_ref",
+            "supersedes_contract_ref",
+        ):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ProjectionError(f"{name}_must_be_non_blank_or_null")
         if self.continuation_policy not in VALID_POLICIES:
             raise ProjectionError("unknown_continuation_policy")
+        if self.continuation_policy == "OWNER_REQUIRED" and self.owner_gate.upper() in {"NONE", "NO", "FALSE"}:
+            raise ProjectionError("owner_required_without_owner_gate")
         if self.source_health not in VALID_SOURCE_HEALTH:
             raise ProjectionError("unknown_source_health")
         for name in ("observed_at", "checked_at"):
@@ -158,8 +170,7 @@ def _parse_time(value: str, field: str) -> datetime:
 def _optional(value: Any) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
-    return text or None
+    return str(value)
 
 
 def read_rp001(payload: Mapping[str, Any]) -> RP001Projection:
