@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from dataclasses import asdict
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from governance.canon_router import (
     Authority,
@@ -18,11 +17,6 @@ from governance.canon_router import (
     Sensitivity,
     _SENSITIVITY_RANK,
 )
-
-from memos.configs.vec_db import QdrantVecDBConfig
-from memos.memories.textual.general import GeneralTextMemory
-from memos.memories.textual.item import TextualMemoryItem, TextualMemoryMetadata
-from memos.vec_dbs.qdrant import QdrantVecDB
 
 
 class CanonicalSQLiteStore:
@@ -158,13 +152,19 @@ class CanonicalSQLiteStore:
 
 
 class PartitionedMemOSIndex:
-    """Derived MemOS index partitioned before retrieval by policy dimensions."""
+    """Derived MemOS index partitioned before retrieval by policy dimensions.
+
+    MemOS imports are deliberately lazy. Product-neutral Canon/governance can
+    therefore be imported and combined with a different derived backend without
+    requiring the MemoryOS distribution. When this class is actually used, the
+    exact MemOS runtime is imported inside the candidate-specific methods.
+    """
 
     def __init__(self, root: str | Path, embedder) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.embedder = embedder
-        self._memories: dict[tuple[str, str, Sensitivity], GeneralTextMemory] = {}
+        self._memories: dict[tuple[str, str, Sensitivity], Any] = {}
         self.query_log: list[dict] = []
         self.write_log: list[dict] = []
 
@@ -175,9 +175,14 @@ class PartitionedMemOSIndex:
     def _partition(self, record: KnowledgeRecord) -> tuple[str, str, Sensitivity]:
         return (record.target_domain, record.purpose, record.sensitivity)
 
-    def _memory(self, partition: tuple[str, str, Sensitivity]) -> GeneralTextMemory:
+    def _memory(self, partition: tuple[str, str, Sensitivity]) -> Any:
         if partition in self._memories:
             return self._memories[partition]
+
+        from memos.configs.vec_db import QdrantVecDBConfig
+        from memos.memories.textual.general import GeneralTextMemory
+        from memos.vec_dbs.qdrant import QdrantVecDB
+
         project, purpose, sensitivity = partition
         path = self.root / self._slug(project) / self._slug(purpose) / sensitivity.value.lower()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,7 +199,9 @@ class PartitionedMemOSIndex:
         return memory
 
     @staticmethod
-    def _to_item(record: KnowledgeRecord) -> TextualMemoryItem:
+    def _to_item(record: KnowledgeRecord) -> Any:
+        from memos.memories.textual.item import TextualMemoryItem, TextualMemoryMetadata
+
         metadata = TextualMemoryMetadata(
             type="canon_contract_index_projection",
             source_ref=record.source_ref,
@@ -242,8 +249,8 @@ class PartitionedMemOSIndex:
         purpose: str,
         clearance: Sensitivity,
         top_k: int = 10,
-    ) -> list[TextualMemoryItem]:
-        results: list[TextualMemoryItem] = []
+    ) -> list[Any]:
+        results: list[Any] = []
         for sensitivity in Sensitivity:
             if _SENSITIVITY_RANK[sensitivity] > _SENSITIVITY_RANK[clearance]:
                 continue
@@ -263,17 +270,21 @@ class PartitionedMemOSIndex:
 
 
 class GovernedMemOSService:
-    """Governance + canonical truth + derived MemOS index composition."""
+    """Governance + canonical truth + derived index composition.
+
+    The historical class name is retained for compatibility with the existing
+    frozen gates. The service itself only depends on the small derived-index
+    interface (put/search_allowed) and is not authoritative for candidate data.
+    """
 
     def __init__(
         self,
         canonical: CanonicalSQLiteStore,
-        index: PartitionedMemOSIndex,
+        index: Any,
     ) -> None:
         self.canonical = canonical
         self.index = index
         self.gate = FailClosedCanonRouter()
-        # Canonical truth reconstructs governance state; index is not consulted.
         restored = canonical.all()
         self.gate._records = {record.record_id: record for record in restored}
         self._history_cursor = 0
@@ -313,7 +324,6 @@ class GovernedMemOSService:
         authority: Authority,
         top_k: int = 10,
     ) -> tuple[str, list[KnowledgeRecord]]:
-        # Policy gates run before any candidate-index retrieval.
         route = self.gate.route(
             explicit_target=target_project,
             target_candidates=(),
@@ -342,15 +352,10 @@ class GovernedMemOSService:
                 continue
             decision: ReadDecision = self.gate.read(item.id, authority=authority)
             if decision.allowed and decision.record is not None:
-                # Hydrate from canonical truth, never return candidate-index payload as truth.
                 allowed.append(canonical_record)
         return ("ALLOWED", allowed)
 
     def _sync(self) -> None:
-        # Project only records whose canonical representation is new or changed.
-        # This avoids rewriting unchanged Canon records into the derived MemOS index,
-        # while still re-projecting status/content changes caused by conflict,
-        # correction or explicit promotion.
         for record in self.gate.list_internal():
             persisted = self.canonical.get(record.record_id)
             if persisted == record:
