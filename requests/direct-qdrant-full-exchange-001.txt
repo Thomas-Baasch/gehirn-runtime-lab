@@ -1,0 +1,1 @@
+Execute direct qdrant-client 1.16.0 as the derived retrieval backend against the unchanged composed Cross-Project Golden Tests GT-01..GT-12 and the unchanged 8/8 recovery/fault-injection gate. Only inject the derived-index class; do not weaken or rewrite test criteria. This is an exchange proof for the derived retrieval role only. No final stack decision.
