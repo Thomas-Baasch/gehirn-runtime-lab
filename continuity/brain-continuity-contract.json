@@ -1,0 +1,29 @@
+{
+  "schema": "externes-gehirn.continuity-contract",
+  "version": "0.1.0",
+  "status": "ACTIVE_EXPECTATION",
+  "continuation_policy": "AUTONOMOUS_EXPECTED_WHEN_NEXT_CONTRACT_FROZEN",
+  "expected_contract": {
+    "drive_id": "1sF5t2XKJJywjuaRMfaUKodUR_OAwGuZfybstXeqitM8",
+    "title": "Derived Retrieval Phase C – Truth-Aware Answer-Set Contract V0.1 – 2026-08-21",
+    "frozen_at_utc": "2026-08-21T05:31:00Z",
+    "progress_markers": [
+      "phase c",
+      "truth-aware",
+      "answer-set"
+    ]
+  },
+  "watch": {
+    "branch": "main",
+    "status_issue": 21,
+    "stale_after_seconds": 900
+  },
+  "rights": {
+    "observe": true,
+    "write_status_issue": true,
+    "dispatch_workflow": false,
+    "merge": false,
+    "change_thresholds": false,
+    "make_stack_decision": false
+  }
+}
