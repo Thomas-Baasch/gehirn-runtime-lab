@@ -1,0 +1,48 @@
+name: Safe Continuation Executor V1 Lab Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/safe-continuation-executor-v1-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  safe-continuation-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify frozen contract binding
+        run: |
+          python - <<'PY'
+          import json
+          b=json.load(open('contracts/safe_continuation_executor_v1_binding.json',encoding='utf-8'))
+          assert b['external_contract_drive_id']=='1xtyngTOQAy6QfcDddje_HInAIBZfz5NstB9QdGmT0c4'
+          assert b['external_contract_sha256']=='b437d928e0aa27839d0179da6a968d783324bcf41580c50079592d667d56c124'
+          assert b['deterministic_cases']==20
+          assert b['randomized_cases']==100000
+          assert b['required_random_forbidden_dispatches']==0
+          PY
+      - name: Syntax-check executor and gate
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile governance/safe_continuation_executor.py critical/safe_continuation_executor_v1_gate.py
+      - name: Execute deterministic and 100k stress gate
+        env:
+          PYTHONPATH: .
+        run: python critical/safe_continuation_executor_v1_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safe-continuation-executor-v1-evidence
+          path: |
+            reports/continuation/safe_continuation_executor_v1.json
+            contracts/safe_continuation_executor_v1_binding.json
+          if-no-files-found: error
