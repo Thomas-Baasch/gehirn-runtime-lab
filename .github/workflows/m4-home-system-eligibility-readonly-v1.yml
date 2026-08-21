@@ -1,0 +1,34 @@
+name: M4 Home System Eligibility Read Only V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'governance/m4_home_system_eligibility.py'
+      - 'critical/m4_home_system_eligibility_gate.py'
+      - '.github/workflows/m4-home-system-eligibility-readonly-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  m4-readonly-eligibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile governance/m4_home_system_eligibility.py critical/m4_home_system_eligibility_gate.py
+      - name: Execute frozen read-only M4 eligibility gate
+        run: python critical/m4_home_system_eligibility_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m4-home-system-eligibility-readonly-v1-evidence
+          path: reports/continuation/m4_home_system_eligibility_v1.json
+          if-no-files-found: error
