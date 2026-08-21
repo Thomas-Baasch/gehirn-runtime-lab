@@ -1,0 +1,36 @@
+{
+  "schema": "externes-gehirn.derived-retrieval-phase-b-binding",
+  "version": "0.1.0",
+  "external_contract_drive_id": "1MZvw0Hn4FBciejld4pm0vHGzJo-9WYWN",
+  "external_contract_sha256": "0569c29f3c30981dc0965715f740d204e6e129bb89dbb61fb1891fe764b889de",
+  "benchmark_path": "contracts/derived_retrieval_phase_b_benchmark_v0.1.py",
+  "benchmark_sha256": "8e06db355e7d53dda3774c38029b78112d1789ab354eff273e079c844f6bd869",
+  "benchmark_corpus_records": 120,
+  "benchmark_queries": 48,
+  "benchmark_hard_distractors": 48,
+  "query_directions": {
+    "de_to_de": 12,
+    "en_to_en": 12,
+    "de_to_en": 12,
+    "en_to_de": 12
+  },
+  "sentence_transformers_version": "5.7.0",
+  "sentence_transformers_wheel_sha256": "b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730",
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "embedding_model_revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "embedding_dimension": 384,
+  "candidate_a": "MemTensor/MemOS 2.0.30 @ f4db521214c29337164ec788bafede7eab236c25 + qdrant-client 1.16.0",
+  "candidate_b": "direct qdrant-client 1.16.0",
+  "quality_floors": {
+    "Recall@5": 0.9,
+    "MRR@10": 0.8,
+    "nDCG@10": 0.85
+  },
+  "tie_rule": "all absolute primary-metric differences <= 0.01",
+  "unique_advantage_rule": "+0.02 MRR@10 and +0.02 nDCG@10 with paired bootstrap 95% CI excluding 0 and no safety regression",
+  "regressions_required_before_result": [
+    "Direct-Qdrant no-MemoryOS 6/6 + 6/6 + 8/8",
+    "MemOS composed 6/6 + 6/6 + 8/8"
+  ],
+  "status": "FROZEN_BEFORE_CANDIDATE_RUNTIME"
+}

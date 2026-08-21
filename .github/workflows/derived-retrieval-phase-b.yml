@@ -1,0 +1,152 @@
+name: Derived Retrieval Phase B Semantic Quality
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/derived-retrieval-phase-b-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-no-memoryos-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install direct backend only
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify MemoryOS remains absent
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, importlib.util
+          assert m.version('qdrant-client') == '1.16.0'
+          assert importlib.util.find_spec('memos') is None
+          try:
+              m.distribution('MemoryOS')
+          except m.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError('MemoryOS unexpectedly installed')
+          PY
+      - name: Regress Direct-Qdrant 12/12 + 8/8 without MemoryOS
+        env:
+          PYTHONPATH: .
+        run: python critical/direct_qdrant_no_memoryos_gate.py
+      - name: Upload direct no-MemoryOS precondition evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-b-direct-no-memoryos-precondition
+          path: reports/direct_exchange/
+          if-no-files-found: error
+
+  phase-b-paired:
+    needs: direct-no-memoryos-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download direct no-MemoryOS precondition evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: phase-b-direct-no-memoryos-precondition
+          path: preconditions/direct-no-memoryos
+      - name: Install exact MemOS release and pinned Qdrant
+        run: |
+          python -m pip install "git+https://github.com/MemTensor/MemOS.git@f4db521214c29337164ec788bafede7eab236c25"
+          python -m pip install "qdrant-client==1.16.0"
+      - name: Download and verify exact sentence-transformers wheel
+        run: |
+          mkdir -p /tmp/stwheel
+          python -m pip download --no-deps --only-binary=:all: "sentence-transformers==5.7.0" -d /tmp/stwheel
+          python - <<'PY'
+          import glob, hashlib
+          files = glob.glob('/tmp/stwheel/*.whl')
+          assert len(files) == 1, files
+          data = open(files[0], 'rb').read()
+          actual = hashlib.sha256(data).hexdigest()
+          expected = 'b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730'
+          assert actual == expected, (actual, expected, files[0])
+          print('sentence-transformers wheel sha256', actual)
+          PY
+          python -m pip install --upgrade /tmp/stwheel/*.whl
+      - name: Verify exact runtime identities
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m
+          assert m.version('MemoryOS') == '2.0.30'
+          assert m.version('qdrant-client') == '1.16.0'
+          assert m.version('sentence-transformers') == '5.7.0'
+          PY
+      - name: Verify frozen contract binding and benchmark hash
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          binding = json.load(open('contracts/derived_retrieval_phase_b_binding_v0.1.json', encoding='utf-8'))
+          assert binding['external_contract_drive_id'] == '1MZvw0Hn4FBciejld4pm0vHGzJo-9WYWN'
+          assert binding['external_contract_sha256'] == '0569c29f3c30981dc0965715f740d204e6e129bb89dbb61fb1891fe764b889de'
+          data = open(binding['benchmark_path'], 'rb').read()
+          actual = hashlib.sha256(data).hexdigest()
+          assert actual == binding['benchmark_sha256'] == '8e06db355e7d53dda3774c38029b78112d1789ab354eff273e079c844f6bd869', actual
+          print('benchmark sha256', actual)
+          PY
+      - name: Syntax-check Phase B gate and frozen benchmark
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile critical/derived_retrieval_phase_b_gate.py contracts/derived_retrieval_phase_b_benchmark_v0.1.py
+      - name: Regress MemOS critical six
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_composed_gate.py
+      - name: Regress MemOS remaining six
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_remaining_gate.py
+      - name: Regress MemOS recovery eight
+        env:
+          PYTHONPATH: .
+        run: python critical/governance_memos_recovery_gate.py
+      - name: Execute frozen paired Phase B benchmark
+        id: phase_b
+        continue-on-error: true
+        env:
+          PYTHONPATH: .
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: python critical/derived_retrieval_phase_b_gate.py
+      - name: Upload Phase B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: derived-retrieval-phase-b-evidence
+          path: |
+            reports/value/derived_retrieval_phase_b.json
+            reports/composed/governance_memos_critical.json
+            reports/composed/governance_memos_remaining.json
+            reports/composed/governance_memos_recovery.json
+            contracts/derived_retrieval_phase_b_binding_v0.1.json
+            contracts/derived_retrieval_phase_b_benchmark_v0.1.py
+          if-no-files-found: error
+      - name: Enforce evidence result after artifact upload
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path('reports/value/derived_retrieval_phase_b.json')
+          if not path.exists():
+              raise SystemExit('Phase-B evidence missing')
+          report = json.loads(path.read_text(encoding='utf-8'))
+          result = report.get('result')
+          print('Phase-B result:', result)
+          print('Role decision:', report.get('role_decision'))
+          if isinstance(result, str) and result.startswith('BLOCKED_'):
+              sys.exit(2)
+          if result != 'PASS':
+              sys.exit(1)
+          PY
