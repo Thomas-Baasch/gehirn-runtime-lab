@@ -103,7 +103,8 @@ def main() -> int:
         rl = limit_ex2.execute(item("limit", retry_limit=1))
         record("DL-06", rl.outcome == "CIRCUIT_OPEN" and limit_calls == [], rl.outcome)
 
-        # DL-07 hard crash after claim/before callback leaves CLAIMED; reopen reconciles, no callback.
+        # DL-07 hard crash after claim/before callback leaves CLAIMED; reopen sees
+        # the durable uncertain claim, blocks redispatch, and MUST NOT mutate it.
         crash_calls: list[str] = []
         def crash_after_claim(w: WorkItem) -> None:
             raise RuntimeError("SIMULATED_PROCESS_CRASH_AFTER_CLAIM")
@@ -118,7 +119,7 @@ def main() -> int:
         crash_reopen = DurableSafeContinuationExecutor(DurableContinuationLedger(db), lambda w: after_calls.append(w.dedupe_key) or True)
         rc = crash_reopen.execute(item("crash-before-callback"))
         post_reopen = DurableContinuationLedger(db).state("crash-before-callback")
-        record("DL-07", crashed and pre_reopen is not None and pre_reopen.status == "CLAIMED" and rc.outcome == "RECONCILE_REQUIRED" and after_calls == [] and post_reopen is not None and post_reopen.status == "RECONCILE_REQUIRED", f"before={pre_reopen};after={post_reopen}")
+        record("DL-07", crashed and pre_reopen is not None and pre_reopen.status == "CLAIMED" and rc.outcome == "RECONCILE_REQUIRED" and after_calls == [] and post_reopen is not None and post_reopen.status == "CLAIMED", f"before={pre_reopen};after={post_reopen}")
 
         # DL-08 downstream may have succeeded, local success uncertain => reconcile and never blind callback twice.
         uncertain_calls: list[str] = []
