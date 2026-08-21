@@ -1,0 +1,35 @@
+name: RP-001 Continuity Reader Proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - rp-001-continuity-reader
+    paths:
+      - 'continuity/rp001_projection.py'
+      - 'tests/test_rp001_projection.py'
+      - '.github/workflows/rp-001-continuity-reader.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reader-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Compile RP-001 reader
+        run: python -m py_compile continuity/rp001_projection.py
+      - name: Run RP-001 independent reader proofs
+        run: python -m unittest tests.test_rp001_projection -v
+      - name: Re-run existing continuity supervisor regression
+        run: python -m unittest tests.test_brain_continuity_supervisor -v
+      - name: Confirm protected files remain byte-identical to base main
+        run: |
+          set -euo pipefail
+          git diff --exit-code d3c2dc68eacfac605b38c2067199339068f20050 -- continuity/brain-continuity-contract.json continuity/brain_continuity_supervisor.py
