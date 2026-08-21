@@ -1,0 +1,50 @@
+name: Externes Gehirn Continuity Supervisor
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'continuity/**'
+      - 'tests/test_brain_continuity_supervisor.py'
+      - '.github/workflows/brain-continuity-supervisor.yml'
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-continuity-supervisor
+  cancel-in-progress: false
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run continuity contract tests
+        run: python -m unittest tests.test_brain_continuity_supervisor -v
+
+  supervise:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
+    needs: contract-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reconcile brain continuity state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -B continuity/brain_continuity_supervisor.py
