@@ -1,0 +1,49 @@
+name: RP-001 Cross-System Reader Projection
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'contracts/rp-001-continuity-contract.schema.v1.json'
+      - 'contracts/rp-001-peter-fixture.v1.json'
+      - 'continuity/rp001_projection.py'
+      - 'tests/test_rp001_reader_projection.py'
+      - '.github/workflows/rp-001-reader-projection.yml'
+      - 'continuity/RP-001-PROJECTION-PROOF.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-brain-reader-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Run independent External Brain RP-001 reader/projection proof
+        run: python -m unittest tests.test_rp001_reader_projection -v
+      - name: Prove reader-only boundary remains hard
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, str(Path.cwd()))
+          from continuity.rp001_projection import load_projection
+          result = load_projection(Path('contracts/rp-001-peter-fixture.v1.json'))
+          assert result.reader_writer_authority is False
+          assert result.dispatch_allowed is False
+          assert result.canon_promotion_allowed is False
+          print('RP_001_EXTERNAL_BRAIN_READER_PROJECTION_PASS')
+          print('WRITER_AUTHORITY=false')
+          print('DISPATCH_ALLOWED=false')
+          print('CANON_PROMOTION_ALLOWED=false')
+          print('SEMANTIC_DIGEST=' + result.semantic_digest())
+          PY
