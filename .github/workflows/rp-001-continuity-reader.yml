@@ -1,0 +1,116 @@
+name: RP-001 Continuity Reader Proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - rp-001-continuity-reader
+    paths:
+      - 'continuity/rp001_projection.py'
+      - 'tests/test_rp001_projection.py'
+      - '.github/workflows/rp-001-continuity-reader.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'continuity/rp001_projection.py'
+      - 'tests/test_rp001_projection.py'
+      - '.github/workflows/rp-001-continuity-reader.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reader-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Publish running status
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BODY=$(cat <<EOF
+          # RP-001 External Brain Reader Proof
+
+          Status: RUNNING
+          Run ID: ${RUN_ID}
+          Run number: ${RUN_NUMBER}
+          Branch: ${GITHUB_REF_NAME}
+          Commit: ${SHA}
+          Rights: READ_ONLY_PROJECTION / NO_CANON_WRITE / NO_DISPATCH
+          EOF
+          )
+          gh api --method PATCH "repos/${REPO}/issues/24" -f body="$BODY" >/dev/null
+      - name: Compile RP-001 reader
+        run: python -m py_compile continuity/rp001_projection.py
+      - name: Run RP-001 independent reader proofs
+        run: python -m unittest tests.test_rp001_projection -v
+      - name: Re-run existing continuity supervisor regression
+        run: python -m unittest tests.test_brain_continuity_supervisor -v
+      - name: Confirm protected files remain byte-identical to base main
+        run: |
+          set -euo pipefail
+          test "$(git hash-object continuity/brain-continuity-contract.json)" = "aecbea10d40c712f65fc49de40596404e0e393a0"
+          test "$(git hash-object continuity/brain_continuity_supervisor.py)" = "a5fb19a3dccc5c3df3122da06bd27ad0457a5bc3"
+      - name: Publish success status
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+        run: |
+          BODY=$(cat <<EOF
+          # RP-001 External Brain Reader Proof
+
+          Status: SUCCESS
+          Acceptance: PASS_EXTERNAL_BRAIN_RP001_READER
+          Run ID: ${RUN_ID}
+          Run number: ${RUN_NUMBER}
+          Branch: ${GITHUB_REF_NAME}
+          Commit: ${SHA}
+          Tests: RP-001 independent reader proofs + existing continuity supervisor regression
+          Protected existing contract/supervisor: BYTE_IDENTICAL_TO_BASE_MAIN
+          Rights: READ_ONLY_PROJECTION / NO_CANON_WRITE / NO_DISPATCH
+          Thomas muss: nichts
+          EOF
+          )
+          gh api --method PATCH "repos/${REPO}/issues/24" -f body="$BODY" >/dev/null
+      - name: Publish failure status
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+        run: |
+          BODY=$(cat <<EOF
+          # RP-001 External Brain Reader Proof
+
+          Status: FAILURE
+          Acceptance: NOT_PASSED
+          Run ID: ${RUN_ID}
+          Run number: ${RUN_NUMBER}
+          Branch: ${GITHUB_REF_NAME}
+          Commit: ${SHA}
+          Existing Phase-C/continuity production path remains unchanged.
+          Thomas muss: nichts; technical repair only.
+          EOF
+          )
+          gh api --method PATCH "repos/${REPO}/issues/24" -f body="$BODY" >/dev/null
