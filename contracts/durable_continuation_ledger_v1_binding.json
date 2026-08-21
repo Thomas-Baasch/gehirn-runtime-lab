@@ -1,0 +1,12 @@
+{
+  "schema": "externes-gehirn.durable-continuation-ledger-binding",
+  "version": "0.1.0",
+  "status": "FROZEN_BEFORE_RUNTIME",
+  "external_contract_drive_id": "1pzUowtAZXeEGbcK7M6FancTiR-B3d_f3Y1KOzgJMqB4",
+  "external_contract_sha256": "c526614c461434afb2b191fea586c5e152bcedf8e2a32de5e780bcf4b1d7edd4",
+  "external_contract_size_bytes": 4227,
+  "deterministic_cases_min": 12,
+  "stress_claim_attempts_min": 10000,
+  "required_duplicate_successful_claims": 0,
+  "scope": "synthetic M5 durability hardening only; no real Home-System dispatch authority"
+}
