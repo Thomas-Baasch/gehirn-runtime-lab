@@ -1,0 +1,43 @@
+name: Direct Qdrant Full Exchange Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requests/direct-qdrant-full-exchange-*.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-exchange:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install current exact MemOS dependency for unchanged gate imports
+        run: python -m pip install "git+https://github.com/MemTensor/MemOS.git@f4db521214c29337164ec788bafede7eab236c25"
+      - name: Install pinned Qdrant client
+        run: python -m pip install "qdrant-client==1.16.0"
+      - name: Verify runtime identity
+        run: |
+          python -c "import importlib.metadata as m; assert m.version('MemoryOS') == '2.0.30'"
+          python -c "import importlib.metadata as m; assert m.version('qdrant-client') == '1.16.0'"
+      - name: Syntax-check exchange gate
+        env:
+          PYTHONPATH: .
+        run: python -m py_compile critical/direct_qdrant_full_exchange_gate.py governance/direct_qdrant_index.py
+      - name: Execute direct-Qdrant against unchanged 12/12 + 8/8 gates
+        env:
+          PYTHONPATH: .
+        run: python critical/direct_qdrant_full_exchange_gate.py
+      - name: Upload direct exchange evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-qdrant-full-exchange-evidence
+          path: reports/direct_exchange/
+          if-no-files-found: error
