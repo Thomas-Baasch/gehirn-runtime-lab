@@ -1,0 +1,37 @@
+{
+  "schema": "externes-gehirn.derived-retrieval-phase-b3-binding",
+  "version": "0.1.0",
+  "status": "FROZEN_BEFORE_RUNTIME",
+  "external_contract_drive_id": "1oy8qVNyDbNJeLhkrrlexj50--1GSNJTChFWOypY94Ek",
+  "external_contract_file_sha256": "441f05dcf1f85a23501e27e3644c72b2c814c8832558f0a35bb6b39638baa12a",
+  "external_contract_semantic_sha256": "b5bfaad5e3d3ff19af4fc55b840f5a3ae150b9ee91848840f70d5438674e5333",
+  "inherits_phase_b_contract_drive_id": "1MZvw0Hn4FBciejld4pm0vHGzJo-9WYWN",
+  "benchmark_path": "contracts/derived_retrieval_phase_b_benchmark_v0.1.py",
+  "benchmark_sha256": "8e06db355e7d53dda3774c38029b78112d1789ab354eff273e079c844f6bd869",
+  "dense_embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "dense_embedding_revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "reranker_revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+  "reranker_license": "apache-2.0",
+  "sentence_transformers_version": "5.7.0",
+  "sentence_transformers_wheel_sha256": "b78141da3d8137e70d965866e2ca43190b9266f3d4d8752e250ded75e7136730",
+  "qdrant_client_version": "1.16.0",
+  "dense_top_n": 10,
+  "quality_floors": {"Recall@5": 0.90, "MRR@10": 0.80, "nDCG@10": 0.85},
+  "dense_baseline_expected": {"Recall@5": 1.0, "MRR@10": 0.538542, "nDCG@10": 0.654845, "Top1": 0.229167, "Recall@10": 1.0},
+  "mmarco_baseline_expected": {"Recall@5": 1.0, "MRR@10": 0.677083, "nDCG@10": 0.759666, "Top1": 0.4375, "Recall@10": 1.0},
+  "safety": [
+    "project deny before dense/reranker",
+    "low clearance never exposes confidential candidate to reranker",
+    "index-only record never reaches reranker or Canon result",
+    "reranking is read-only and side-effect free"
+  ],
+  "operability": [
+    "record exact revision",
+    "record model load time",
+    "record 480-pair scoring time",
+    "record process max RSS when available",
+    "runner resource exhaustion is BLOCKED_RESOURCE_OPERABILITY_EVIDENCE, not quality FAIL"
+  ],
+  "scope": "Derived retrieval role only; no final External Brain stack decision"
+}
