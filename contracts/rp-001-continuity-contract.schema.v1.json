@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "peter://rp-001/continuity-contract/v1",
+  "title": "RP-001 Cross-System Continuity Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "project_id",
+    "home_system",
+    "authoritative_status_ref",
+    "current_work_id",
+    "work_state",
+    "continuation_policy",
+    "owner_gate",
+    "last_progress_evidence",
+    "active_run_refs",
+    "source_health",
+    "observed_at",
+    "checked_at",
+    "classifier_version",
+    "scope",
+    "purpose",
+    "sensitivity"
+  ],
+  "properties": {
+    "contract_version": {"const": "rp-001.v1"},
+    "project_id": {"type": "string", "minLength": 1},
+    "home_system": {"type": "string", "minLength": 1},
+    "authoritative_status_ref": {"type": "string", "minLength": 1},
+    "current_work_id": {"type": "string", "minLength": 1},
+    "work_state": {"type": "string", "minLength": 1},
+    "continuation_policy": {
+      "enum": [
+        "AUTONOMOUS_EXPECTED",
+        "WAITING_EXPECTED",
+        "OWNER_REQUIRED",
+        "PARKED",
+        "FROZEN",
+        "MANUAL_ON_DEMAND"
+      ]
+    },
+    "owner_gate": {"type": "string", "minLength": 1},
+    "next_contract_ref": {"type": ["string", "null"]},
+    "next_meaningful_step": {"type": ["string", "null"]},
+    "last_progress_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "active_run_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "source_health": {"enum": ["FRESH", "STALE", "UNREACHABLE", "UNKNOWN", "CONFLICT"]},
+    "observed_at": {"type": "string", "minLength": 1},
+    "checked_at": {"type": "string", "minLength": 1},
+    "classifier_version": {"type": "string", "minLength": 1},
+    "scope": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "sensitivity": {"type": "string", "minLength": 1},
+    "blocked_reason": {"type": ["string", "null"]},
+    "decision_ref": {"type": ["string", "null"]},
+    "supersedes_contract_ref": {"type": ["string", "null"]}
+  },
+  "x-rp001-hard-rules": {
+    "frozen_or_paused_overrides_heartbeat_heuristic": true,
+    "unknown_or_stale_never_dispatches": true,
+    "reader_never_gets_home_system_writer_authority": true,
+    "continuation_candidate_is_not_dispatch": true,
+    "replay_must_be_idempotent": true
+  }
+}
