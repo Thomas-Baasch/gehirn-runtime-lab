@@ -16,7 +16,7 @@
   "watch": {
     "branch": "main",
     "status_issue": 21,
-    "stale_after_seconds": 900
+    "stale_after_seconds": 1800
   },
   "rights": {
     "observe": true,
