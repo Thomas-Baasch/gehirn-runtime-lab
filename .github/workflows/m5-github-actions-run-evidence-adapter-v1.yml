@@ -1,0 +1,46 @@
+name: M5 GitHub Actions Run Evidence Adapter V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'governance/github_actions_run_evidence.py'
+      - 'critical/m5_github_actions_run_evidence_adapter_v1_gate.py'
+      - '.github/workflows/m5-github-actions-run-evidence-adapter-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  m5-github-actions-run-evidence-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile governance/github_actions_run_evidence.py critical/m5_github_actions_run_evidence_adapter_v1_gate.py
+      - name: Regression durable ledger V1
+        run: python critical/durable_continuation_ledger_v1_gate.py
+      - name: Regression downstream reconciliation V1
+        run: python critical/m5_downstream_reconciliation_v1_gate.py
+      - name: Regression post-dispatch run heartbeat V1
+        run: python critical/m5_post_dispatch_run_heartbeat_v1_gate.py
+      - name: Execute frozen GitHub Actions evidence adapter gate
+        run: python critical/m5_github_actions_run_evidence_adapter_v1_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-github-actions-run-evidence-adapter-v1-evidence
+          path: |
+            reports/continuation/durable_continuation_ledger_v1.json
+            reports/continuation/m5_downstream_reconciliation_v1.json
+            reports/continuation/m5_post_dispatch_run_heartbeat_v1.json
+            reports/continuation/m5_github_actions_run_evidence_adapter_v1.json
+          if-no-files-found: error
