@@ -1,0 +1,58 @@
+name: M5 Durable Single Pilot Authorization Consumption V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'governance/durable_single_pilot_authorization_consumption.py'
+      - 'critical/m5_durable_single_pilot_authorization_consumption_v1_gate.py'
+      - '.github/workflows/m5-durable-single-pilot-authorization-consumption-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  m5-durable-authorization-consumption:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile governance/durable_single_pilot_authorization_consumption.py critical/m5_durable_single_pilot_authorization_consumption_v1_gate.py
+      - name: Regression M4 authority boundary V1
+        run: python critical/m4_single_pilot_authority_boundary_v1_gate.py
+      - name: Regression M4 composite preflight V1
+        run: python critical/m4_single_pilot_composite_preflight_v1_gate.py
+      - name: Regression M5 durable continuation ledger V1
+        run: python critical/durable_continuation_ledger_v1_gate.py
+      - name: Regression M5 downstream reconciliation V1
+        run: python critical/m5_downstream_reconciliation_v1_gate.py
+      - name: Regression M5 post-dispatch run heartbeat V1
+        run: python critical/m5_post_dispatch_run_heartbeat_v1_gate.py
+      - name: Regression M5 GitHub Actions run evidence V1
+        run: python critical/m5_github_actions_run_evidence_adapter_v1_gate.py
+      - name: Regression M5 downstream outcome artifact evidence V1
+        run: python critical/m5_downstream_outcome_artifact_evidence_v1_gate.py
+      - name: Execute frozen durable authorization consumption gate
+        run: python critical/m5_durable_single_pilot_authorization_consumption_v1_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-durable-single-pilot-authorization-consumption-v1-evidence
+          path: |
+            reports/continuation/m4_single_pilot_authority_boundary_v1.json
+            reports/continuation/m4_single_pilot_composite_preflight_v1.json
+            reports/continuation/durable_continuation_ledger_v1.json
+            reports/continuation/m5_downstream_reconciliation_v1.json
+            reports/continuation/m5_post_dispatch_run_heartbeat_v1.json
+            reports/continuation/m5_github_actions_run_evidence_adapter_v1.json
+            reports/continuation/m5_downstream_outcome_artifact_evidence_v1.json
+            reports/continuation/m5_durable_single_pilot_authorization_consumption_v1.json
+          if-no-files-found: error
