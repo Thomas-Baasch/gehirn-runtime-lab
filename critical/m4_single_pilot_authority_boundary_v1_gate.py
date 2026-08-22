@@ -105,7 +105,10 @@ def grant(intent: PilotIntent | None = None, pf: PreflightEvidence | None = None
 
 
 def main() -> int:
-    i = pilot_intent(); p = preflight(); g = grant(i, p); as_of = BASE + timedelta(seconds=90)
+    i = pilot_intent()
+    p = preflight()
+    g = grant(i, p)
+    as_of = BASE + timedelta(seconds=90)
     cases: list[dict] = []
 
     def record(case_id: str, actual, expected, detail: str = "") -> None:
@@ -132,7 +135,15 @@ def main() -> int:
     record("AB-05", "BLOCKED_AUTHENTICITY" if ab05 else "NOT_BLOCKED", "BLOCKED_AUTHENTICITY")
 
     record("AB-06", validate_single_pilot_authority(i, p, replace(g, revoked=True), as_of=as_of).status, AuthorityStatus.BLOCKED_REVOKED)
-    record("AB-07", validate_single_pilot_authority(i, p, g, as_of=BASE + timedelta(minutes=21)).status, AuthorityStatus.BLOCKED_TEMPORAL)
+
+    # Isolate expiry from all other freshness gates: preflight is only 90s old,
+    # source verification is fresh, but this grant expired at +80s.
+    expired_grant = replace(
+        g,
+        source_verified_at=BASE + timedelta(seconds=75),
+        expires_at=BASE + timedelta(seconds=80),
+    )
+    record("AB-07", validate_single_pilot_authority(i, p, expired_grant, as_of=as_of).status, AuthorityStatus.BLOCKED_TEMPORAL)
 
     predates = replace(g, issued_at=BASE - timedelta(minutes=1), expires_at=BASE + timedelta(minutes=10))
     future = replace(g, issued_at=BASE + timedelta(minutes=3), expires_at=BASE + timedelta(minutes=20))
@@ -146,11 +157,7 @@ def main() -> int:
 
     ab12 = all(
         validate_single_pilot_authority(i, p, x, as_of=as_of).status is AuthorityStatus.BLOCKED_AUTHENTICITY
-        for x in (
-            replace(g, grant_id=""),
-            replace(g, source_ref=""),
-            replace(g, source_evidence_sha256="not-a-sha"),
-        )
+        for x in (replace(g, grant_id=""), replace(g, source_ref=""), replace(g, source_evidence_sha256="not-a-sha"))
     )
     record("AB-12", "BLOCKED_AUTHENTICITY" if ab12 else "NOT_BLOCKED", "BLOCKED_AUTHENTICITY")
 
@@ -213,9 +220,9 @@ def main() -> int:
     record("AB-20", "BLOCKED_WILDCARD_SCOPE" if ab20 else "NOT_BLOCKED", "BLOCKED_WILDCARD_SCOPE")
 
     current_real_preflight_statuses = (
-        "BLOCKED_EXPECTED_WAIT",      # PETER RP-004C
-        "BLOCKED_STATE",              # USCHI 2.0 LEGACY
-        "BLOCKED_ADAPTER_AUTHORITY",  # USCHI NEU
+        "BLOCKED_EXPECTED_WAIT",
+        "BLOCKED_STATE",
+        "BLOCKED_ADAPTER_AUTHORITY",
     )
     ab21 = all(
         validate_single_pilot_authority(i, replace(p, status=status), g, as_of=as_of).status is AuthorityStatus.BLOCKED_PREFLIGHT
@@ -234,7 +241,16 @@ def main() -> int:
     immutable = before == (repr(i), repr(p), repr(g))
     forbidden_names = {"dispatch", "execute", "claim", "retry", "rerun", "cancel", "write", "grant", "create", "merge", "delete"}
     forbidden_surface = any(name in authority_module.__dict__ and callable(authority_module.__dict__[name]) for name in forbidden_names)
-    ab22_ok = deterministic and immutable and not forbidden_surface and not first.dispatch_executed and not first.claim_executed and not first.retry_executed and not first.write_executed and not first.authority_created
+    ab22_ok = (
+        deterministic
+        and immutable
+        and not forbidden_surface
+        and not first.dispatch_executed
+        and not first.claim_executed
+        and not first.retry_executed
+        and not first.write_executed
+        and not first.authority_created
+    )
     record("AB-22", "NO_AUTHORITY_OR_EFFECT_SURFACE" if ab22_ok else "SURFACE_OR_EFFECT_FOUND", "NO_AUTHORITY_OR_EFFECT_SURFACE")
 
     acceptance = {
