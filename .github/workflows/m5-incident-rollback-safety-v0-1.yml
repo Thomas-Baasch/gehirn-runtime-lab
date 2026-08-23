@@ -1,0 +1,46 @@
+name: M5 Incident Rollback Safety V0.1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'governance/m5_incident_rollback_safety.py'
+      - 'critical/m5_incident_rollback_safety_v0_1_gate.py'
+      - '.github/workflows/m5-incident-rollback-safety-v0-1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  m5-incident-rollback-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile governance/m5_incident_rollback_safety.py critical/m5_incident_rollback_safety_v0_1_gate.py
+      - name: Regression safe continuation executor V1
+        run: python critical/safe_continuation_executor_v1_gate.py
+      - name: Regression durable continuation ledger V1
+        run: python critical/durable_continuation_ledger_v1_gate.py
+      - name: Regression downstream reconciliation V1
+        run: python critical/m5_downstream_reconciliation_v1_gate.py
+      - name: Regression downstream outcome artifact evidence V1
+        run: python critical/m5_downstream_outcome_artifact_evidence_v1_gate.py
+      - name: Regression durable single-pilot authorization consumption V1
+        run: python critical/m5_durable_single_pilot_authorization_consumption_v1_gate.py
+      - name: Execute frozen incident rollback safety gate
+        run: python critical/m5_incident_rollback_safety_v0_1_gate.py
+      - name: Upload incident rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-incident-rollback-safety-v0-1-evidence
+          path: reports/continuation/m5_incident_rollback_safety_v0_1.json
+          if-no-files-found: warn
