@@ -4,7 +4,10 @@ import argparse
 import json
 from pathlib import Path
 
-from safe_live_sl5.dryrun_policy import CurrentIssue, Milestone, Policy, evaluate
+try:
+    from safe_live_sl5.dryrun_policy import CurrentIssue, Milestone, Policy, evaluate
+except ModuleNotFoundError:
+    from dryrun_policy import CurrentIssue, Milestone, Policy, evaluate
 
 
 def load_policy(path: str) -> Policy:
