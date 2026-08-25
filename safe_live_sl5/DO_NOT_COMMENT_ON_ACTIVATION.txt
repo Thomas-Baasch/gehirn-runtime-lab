@@ -1,0 +1,1 @@
+The policy activation event itself is explicitly excluded from the material milestone trigger. This prevents circular bootstrap posting and preserves the one-effect-per-later-milestone rule.
