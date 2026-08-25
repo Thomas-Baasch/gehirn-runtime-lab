@@ -1,0 +1,406 @@
+name: Safe-Live SL3 controlled internal reversible acceptance
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl3-reversible-001
+    paths:
+      - 'safe_live_sl3/**'
+      - 'critical/safe_live_sl3_reversible_formal.py'
+      - 'tests/test_safe_live_sl3_guard.py'
+      - '.github/workflows/safe-live-sl3-reversible.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safe-live-sl3-reversible
+  cancel-in-progress: false
+
+env:
+  TARGET_REPO: Thomas-Baasch/gehirn-runtime-lab
+  TARGET_BRANCH: runtime/safe-live-sl3-reversible-001
+  MARKER_PATH: .safe_live_runtime/sl3_01_marker.json
+
+jobs:
+  normal-and-crash:
+    name: normal-and-crash
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact SL3 contract commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Syntax and frozen authority mutations
+        run: |
+          set -euo pipefail
+          python -m py_compile safe_live_sl3/guard.py critical/safe_live_sl3_reversible_formal.py tests/test_safe_live_sl3_guard.py
+          python -m unittest tests.test_safe_live_sl3_guard -v
+      - name: Exact preflight before any write
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "${TARGET_REPO}"
+          test "${GITHUB_REF_NAME}" = "${TARGET_BRANCH}"
+          HEAD_SHA=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          test "${HEAD_SHA}" = "${GITHUB_SHA}"
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/unexpected-marker.json 2>/dev/null; then
+            echo 'marker_exists_before_preflight' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from safe_live_sl3.guard import authorize, EXPECTED_REPO, EXPECTED_BRANCH, MARKER_PATH, ALLOWED_EFFECT
+          ok, reason = authorize(repo=EXPECTED_REPO, branch=EXPECTED_BRANCH, path=MARKER_PATH, effect=ALLOWED_EFFECT, target_exists=False, branch_head_matches_expected=True)
+          assert ok, reason
+          print('SAFE_LIVE_SL3_PREFLIGHT=PASS')
+          PY
+      - name: Normal real create verify rollback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl3 reports/safe_live/sl3_stage1
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          from safe_live_sl3.guard import marker_bytes, marker_sha256
+          Path('/tmp/sl3/marker.bin').write_bytes(marker_bytes())
+          Path('/tmp/sl3/marker.b64').write_text(base64.b64encode(marker_bytes()).decode())
+          Path('/tmp/sl3/marker.sha256').write_text(marker_sha256())
+          PY
+          NORMAL_PRE_HEAD=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          NORMAL_PRE_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${NORMAL_PRE_HEAD}" --jq .tree.sha)
+          gh api --method PUT "repos/${TARGET_REPO}/contents/${MARKER_PATH}" \
+            -f message='SL3-01 controlled marker create normal' \
+            -f content="$(cat /tmp/sl3/marker.b64)" \
+            -f branch="${TARGET_BRANCH}" > /tmp/sl3/normal-create.json
+          NORMAL_CREATE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3/normal-create.json'))['commit']['sha'])")
+          NORMAL_BLOB=$(python -c "import json;print(json.load(open('/tmp/sl3/normal-create.json'))['content']['sha'])")
+          gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" > /tmp/sl3/normal-read.json
+          python - <<'PY'
+          import base64,json
+          from pathlib import Path
+          d=json.load(open('/tmp/sl3/normal-read.json'))
+          got=base64.b64decode((d['content'] or '').replace('\n',''))
+          assert got == Path('/tmp/sl3/marker.bin').read_bytes()
+          PY
+          gh api --method DELETE "repos/${TARGET_REPO}/contents/${MARKER_PATH}" \
+            -f message='SL3-01 controlled marker rollback normal' \
+            -f sha="${NORMAL_BLOB}" \
+            -f branch="${TARGET_BRANCH}" > /tmp/sl3/normal-delete.json
+          NORMAL_DELETE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3/normal-delete.json'))['commit']['sha'])")
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3/marker-after-normal.json 2>/dev/null; then
+            echo 'marker_remains_after_normal_rollback' >&2
+            exit 1
+          fi
+          NORMAL_POST_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${NORMAL_DELETE_COMMIT}" --jq .tree.sha)
+          test "${NORMAL_PRE_TREE}" = "${NORMAL_POST_TREE}"
+          printf '%s\n' "${NORMAL_PRE_HEAD}" > /tmp/sl3/normal_pre_head
+          printf '%s\n' "${NORMAL_PRE_TREE}" > /tmp/sl3/normal_pre_tree
+          printf '%s\n' "${NORMAL_CREATE_COMMIT}" > /tmp/sl3/normal_create_commit
+          printf '%s\n' "${NORMAL_DELETE_COMMIT}" > /tmp/sl3/normal_delete_commit
+          printf '%s\n' "${NORMAL_POST_TREE}" > /tmp/sl3/normal_post_tree
+      - name: Create real crash fixture and intentionally leave marker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CRASH_PRE_HEAD=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          CRASH_PRE_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${CRASH_PRE_HEAD}" --jq .tree.sha)
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3/unexpected-before-crash.json 2>/dev/null; then
+            echo 'marker_exists_before_crash_fixture' >&2
+            exit 1
+          fi
+          gh api --method PUT "repos/${TARGET_REPO}/contents/${MARKER_PATH}" \
+            -f message='SL3-01 crash fixture marker create' \
+            -f content="$(cat /tmp/sl3/marker.b64)" \
+            -f branch="${TARGET_BRANCH}" > /tmp/sl3/crash-create.json
+          CRASH_CREATE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3/crash-create.json'))['commit']['sha'])")
+          CRASH_BLOB=$(python -c "import json;print(json.load(open('/tmp/sl3/crash-create.json'))['content']['sha'])")
+          gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" > /tmp/sl3/crash-read.json
+          python - <<'PY'
+          import base64,json
+          from pathlib import Path
+          d=json.load(open('/tmp/sl3/crash-read.json'))
+          assert base64.b64decode((d['content'] or '').replace('\n','')) == Path('/tmp/sl3/marker.bin').read_bytes()
+          PY
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          def s(name): return Path('/tmp/sl3/'+name).read_text().strip()
+          crash=json.load(open('/tmp/sl3/crash-create.json'))
+          e={
+            'schema':'safe-live.sl3-stage1-evidence.v1',
+            'repo':'Thomas-Baasch/gehirn-runtime-lab',
+            'branch':'runtime/safe-live-sl3-reversible-001',
+            'marker_path':'.safe_live_runtime/sl3_01_marker.json',
+            'allowed_effect':'CREATE_VERIFY_DELETE_EXACT_MARKER',
+            'marker_sha256':s('marker.sha256'),
+            'normal_pre_head':s('normal_pre_head'),
+            'normal_pre_tree':s('normal_pre_tree'),
+            'normal_create_commit':s('normal_create_commit'),
+            'normal_delete_commit':s('normal_delete_commit'),
+            'normal_post_tree':s('normal_post_tree'),
+            'normal_created':True,
+            'normal_readback_match':True,
+            'normal_deleted':True,
+            'crash_pre_head':'__CRASH_PRE_HEAD__',
+            'crash_pre_tree':'__CRASH_PRE_TREE__',
+            'crash_create_commit':'__CRASH_CREATE_COMMIT__',
+            'crash_blob_sha':'__CRASH_BLOB__',
+            'crash_marker_left':True,
+            'issue_or_pr_writes':0,
+            'external_business_actions':0,
+            'new_credentials':0,
+            'new_running_cost_eur':0,
+            'merge_authorized':False,
+          }
+          Path('/tmp/sl3/stage1-template.json').write_text(json.dumps(e,sort_keys=True,indent=2)+'\n')
+          PY
+          python - <<PY
+          from pathlib import Path
+          p=Path('/tmp/sl3/stage1-template.json')
+          t=p.read_text().replace('__CRASH_PRE_HEAD__','${CRASH_PRE_HEAD}').replace('__CRASH_PRE_TREE__','${CRASH_PRE_TREE}').replace('__CRASH_CREATE_COMMIT__','${CRASH_CREATE_COMMIT}').replace('__CRASH_BLOB__','${CRASH_BLOB}')
+          Path('reports/safe_live/sl3_stage1/stage1.json').write_text(t)
+          PY
+          python - <<'PY'
+          import json
+          from safe_live_sl3.guard import verify_lifecycle
+          e=json.load(open('reports/safe_live/sl3_stage1/stage1.json'))
+          print(verify_lifecycle(e))
+          PY
+          echo 'SAFE_LIVE_SL3_CRASH_MARKER_LEFT=true'
+      - name: Persist stage1 crash evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: safe-live-sl3-stage1-${{ github.run_id }}
+          path: reports/safe_live/sl3_stage1/
+          if-no-files-found: error
+          retention-days: 2
+
+  fresh-recovery-and-replay:
+    name: fresh-recovery-and-replay
+    needs: normal-and-crash
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout recovery code only
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download crash evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: safe-live-sl3-stage1-${{ github.run_id }}
+          path: /tmp/sl3-stage1
+      - name: Fresh recovery from real crash fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl3r reports/safe_live/sl3_combined
+          cp /tmp/sl3-stage1/stage1.json /tmp/sl3r/stage1.json
+          CRASH_CREATE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3r/stage1.json'))['crash_create_commit'])")
+          CRASH_BLOB=$(python -c "import json;print(json.load(open('/tmp/sl3r/stage1.json'))['crash_blob_sha'])")
+          CRASH_PRE_TREE=$(python -c "import json;print(json.load(open('/tmp/sl3r/stage1.json'))['crash_pre_tree'])")
+          CURRENT_HEAD=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          test "${CURRENT_HEAD}" = "${CRASH_CREATE_COMMIT}"
+          gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" > /tmp/sl3r/recovery-read.json
+          test "$(python -c "import json;print(json.load(open('/tmp/sl3r/recovery-read.json'))['sha'])")" = "${CRASH_BLOB}"
+          gh api --method DELETE "repos/${TARGET_REPO}/contents/${MARKER_PATH}" \
+            -f message='SL3-01 fresh recovery cleanup' \
+            -f sha="${CRASH_BLOB}" \
+            -f branch="${TARGET_BRANCH}" > /tmp/sl3r/recovery-delete.json
+          RECOVERY_DELETE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3r/recovery-delete.json'))['commit']['sha'])")
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3r/marker-after-recovery.json 2>/dev/null; then
+            echo 'marker_remains_after_fresh_recovery' >&2
+            exit 1
+          fi
+          RECOVERY_POST_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${RECOVERY_DELETE_COMMIT}" --jq .tree.sha)
+          test "${CRASH_PRE_TREE}" = "${RECOVERY_POST_TREE}"
+          printf '%s\n' "${RECOVERY_DELETE_COMMIT}" > /tmp/sl3r/recovery_delete_commit
+          printf '%s\n' "${RECOVERY_POST_TREE}" > /tmp/sl3r/recovery_post_tree
+      - name: Replay normal lifecycle and prove no orphan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          from safe_live_sl3.guard import marker_bytes
+          Path('/tmp/sl3r/marker.bin').write_bytes(marker_bytes())
+          Path('/tmp/sl3r/marker.b64').write_text(base64.b64encode(marker_bytes()).decode())
+          PY
+          REPLAY_PRE_HEAD=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          REPLAY_PRE_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${REPLAY_PRE_HEAD}" --jq .tree.sha)
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3r/unexpected-before-replay.json 2>/dev/null; then
+            echo 'orphan_before_replay' >&2
+            exit 1
+          fi
+          gh api --method PUT "repos/${TARGET_REPO}/contents/${MARKER_PATH}" \
+            -f message='SL3-01 replay marker create' \
+            -f content="$(cat /tmp/sl3r/marker.b64)" \
+            -f branch="${TARGET_BRANCH}" > /tmp/sl3r/replay-create.json
+          REPLAY_CREATE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3r/replay-create.json'))['commit']['sha'])")
+          REPLAY_BLOB=$(python -c "import json;print(json.load(open('/tmp/sl3r/replay-create.json'))['content']['sha'])")
+          gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" > /tmp/sl3r/replay-read.json
+          python - <<'PY'
+          import base64,json
+          from pathlib import Path
+          d=json.load(open('/tmp/sl3r/replay-read.json'))
+          assert base64.b64decode((d['content'] or '').replace('\n','')) == Path('/tmp/sl3r/marker.bin').read_bytes()
+          PY
+          gh api --method DELETE "repos/${TARGET_REPO}/contents/${MARKER_PATH}" \
+            -f message='SL3-01 replay marker rollback' \
+            -f sha="${REPLAY_BLOB}" \
+            -f branch="${TARGET_BRANCH}" > /tmp/sl3r/replay-delete.json
+          REPLAY_DELETE_COMMIT=$(python -c "import json;print(json.load(open('/tmp/sl3r/replay-delete.json'))['commit']['sha'])")
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3r/marker-after-replay.json 2>/dev/null; then
+            echo 'marker_remains_after_replay' >&2
+            exit 1
+          fi
+          REPLAY_POST_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${REPLAY_DELETE_COMMIT}" --jq .tree.sha)
+          test "${REPLAY_PRE_TREE}" = "${REPLAY_POST_TREE}"
+          python - <<PY
+          import json
+          from pathlib import Path
+          e=json.load(open('/tmp/sl3r/stage1.json'))
+          e.update({
+            'schema':'safe-live.sl3-combined-evidence.v1',
+            'stage1_status':'STAGE1_PASS',
+            'recovery_pre_tree':e['crash_pre_tree'],
+            'recovery_delete_commit':Path('/tmp/sl3r/recovery_delete_commit').read_text().strip(),
+            'recovery_post_tree':Path('/tmp/sl3r/recovery_post_tree').read_text().strip(),
+            'recovery_deleted':True,
+            'recovery_marker_absent':True,
+            'replay_pre_head':'${REPLAY_PRE_HEAD}',
+            'replay_pre_tree':'${REPLAY_PRE_TREE}',
+            'replay_create_commit':'${REPLAY_CREATE_COMMIT}',
+            'replay_delete_commit':'${REPLAY_DELETE_COMMIT}',
+            'replay_post_tree':'${REPLAY_POST_TREE}',
+            'replay_created':True,
+            'replay_readback_match':True,
+            'replay_deleted':True,
+            'final_marker_absent':True,
+            'final_branch_head':'${REPLAY_DELETE_COMMIT}',
+            'loops':[
+              {'loop':1,'name':'NORMAL_CREATE_VERIFY_ROLLBACK','pass':True,'fundamental_finding':False},
+              {'loop':2,'name':'AUTHORITY_CURRENTNESS','pass':True,'fundamental_finding':False},
+              {'loop':3,'name':'WRONG_PATH_EFFECT_ESCALATION','pass':True,'fundamental_finding':False},
+              {'loop':4,'name':'CRASH_FRESH_RECOVERY','pass':True,'fundamental_finding':False,'clean':True},
+              {'loop':5,'name':'REPLAY_ORPHAN_PREVENTION','pass':True,'fundamental_finding':False,'clean':True},
+            ],
+          })
+          Path('reports/safe_live/sl3_combined/combined.json').write_text(json.dumps(e,sort_keys=True,indent=2)+'\n')
+          PY
+          python - <<'PY'
+          import json
+          from safe_live_sl3.guard import verify_combined
+          e=json.load(open('reports/safe_live/sl3_combined/combined.json'))
+          r=verify_combined(e)
+          assert r['status']=='PASS'
+          print('SAFE_LIVE_SL3_PRIMARY=PASS')
+          print('SAFE_LIVE_SL3_LOOP_1=PASS')
+          print('SAFE_LIVE_SL3_LOOP_2=PASS')
+          print('SAFE_LIVE_SL3_LOOP_3=PASS')
+          print('SAFE_LIVE_SL3_LOOP_4=PASS')
+          print('SAFE_LIVE_SL3_LOOP_5=PASS')
+          print('SAFE_LIVE_SL3_CLEAN_1=LOOP_4')
+          print('SAFE_LIVE_SL3_CLEAN_2=LOOP_5')
+          print('SAFE_LIVE_SL3_STATE_RESTORED=true')
+          print('SAFE_LIVE_SL3_SL4_AUTHORIZED=false')
+          PY
+      - name: Persist combined reversible evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: safe-live-sl3-combined-${{ github.run_id }}
+          path: reports/safe_live/sl3_combined/
+          if-no-files-found: error
+          retention-days: 2
+
+  formal-readback:
+    name: formal-readback
+    needs: fresh-recovery-and-replay
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download combined evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: safe-live-sl3-combined-${{ github.run_id }}
+          path: /tmp/sl3-combined
+      - name: Fresh read current branch state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl3-formal reports/safe_live/sl3_formal
+          HEAD_SHA=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          HEAD_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${HEAD_SHA}" --jq .tree.sha)
+          MARKER_ABSENT=true
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3-formal/unexpected-marker.json 2>/dev/null; then
+            MARKER_ABSENT=false
+          fi
+          python - <<PY
+          import json
+          from pathlib import Path
+          Path('/tmp/sl3-formal/current.json').write_text(json.dumps({'branch':'${TARGET_BRANCH}','head_sha':'${HEAD_SHA}','head_tree':'${HEAD_TREE}','marker_absent':${MARKER_ABSENT}},sort_keys=True,indent=2)+'\n')
+          PY
+      - name: Independent formal reacceptance
+        run: |
+          set -euo pipefail
+          python critical/safe_live_sl3_reversible_formal.py \
+            --combined /tmp/sl3-combined/combined.json \
+            --fresh-current /tmp/sl3-formal/current.json \
+            --workflow .github/workflows/safe-live-sl3-reversible.yml \
+            --out reports/safe_live/sl3_formal/formal.json | tee /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_FORMAL=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_1=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_2=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_3=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_4=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_5=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_CLEAN_1=LOOP_4' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_CLEAN_2=LOOP_5' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_STATE_RESTORED=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_AUDIT_PRESERVED=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_MARKER_ABSENT=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_SL4_AUTHORIZED=false' /tmp/sl3-formal.log
+          sha256sum reports/safe_live/sl3_formal/formal.json
+      - name: Persist formal SL3 acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: safe-live-sl3-formal-${{ github.run_id }}
+          path: reports/safe_live/sl3_formal/
+          if-no-files-found: error
+          retention-days: 2
