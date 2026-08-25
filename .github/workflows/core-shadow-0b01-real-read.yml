@@ -1,0 +1,185 @@
+name: Core Shadow 0B-01 formal real read
+
+on:
+  push:
+    branches:
+      - runtime/core-shadow-0b-realcase-001
+    paths:
+      - 'core_shadow_0b/real_case_0b01.py'
+      - 'critical/core_shadow_0b01_formal.py'
+      - 'tests/test_core_shadow_0b01.py'
+      - '.github/workflows/core-shadow-0b01-real-read.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+
+concurrency:
+  group: core-shadow-0b01-real-read
+  cancel-in-progress: false
+
+jobs:
+  real-read:
+    name: real-read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact real-case commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Syntax and frozen negative tests
+        run: |
+          set -euo pipefail
+          python -m py_compile core_shadow_0b/real_case_0b01.py critical/core_shadow_0b01_formal.py tests/test_core_shadow_0b01.py
+          python -m unittest tests.test_core_shadow_0b01 -v
+      - name: Read and minimize exact current GitHub sources
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/0b01-source
+
+          gh api "repos/${GITHUB_REPOSITORY}/issues/41" \
+            --jq '{issue_number:.number,title:.title,state:.state,updated_at:.updated_at}' \
+            > /tmp/0b01-source/issue_41.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/issues/41/comments?per_page=100" \
+            --jq '[.[] | {id:.id,created_at:.created_at,updated_at:.updated_at,marker:(.body | split("\n")[0])}]' \
+            > /tmp/0b01-source/comments.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32799743510" \
+            --jq '{id:.id,head_branch:.head_branch,head_sha:.head_sha,status:.status,conclusion:.conclusion,created_at:.created_at,updated_at:.updated_at}' \
+            > /tmp/0b01-source/run_0a_source.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32799743510/artifacts" \
+            --jq '{artifacts:[.artifacts[] | {id:.id,name:.name,expired:.expired,digest:.digest,created_at:.created_at,expires_at:.expires_at,workflow_run:{id:.workflow_run.id,head_branch:.workflow_run.head_branch,head_sha:.workflow_run.head_sha}}]}' \
+            > /tmp/0b01-source/artifacts_0a_source.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32799875758" \
+            --jq '{id:.id,head_branch:.head_branch,head_sha:.head_sha,status:.status,conclusion:.conclusion,created_at:.created_at,updated_at:.updated_at}' \
+            > /tmp/0b01-source/run_0a_formal.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32799875758/artifacts" \
+            --jq '{artifacts:[.artifacts[] | {id:.id,name:.name,expired:.expired,digest:.digest,created_at:.created_at,expires_at:.expires_at,workflow_run:{id:.workflow_run.id,head_branch:.workflow_run.head_branch,head_sha:.workflow_run.head_sha}}]}' \
+            > /tmp/0b01-source/artifacts_0a_formal.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/branches/runtime%2Fcore-shadow-0a1-001" \
+            --jq '{name:.name,head_sha:.commit.sha}' \
+            > /tmp/0b01-source/branch_0a.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32800776956" \
+            --jq '{id:.id,head_branch:.head_branch,head_sha:.head_sha,status:.status,conclusion:.conclusion,created_at:.created_at,updated_at:.updated_at}' \
+            > /tmp/0b01-source/run_precheck.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32800776956/artifacts" \
+            --jq '{artifacts:[.artifacts[] | {id:.id,name:.name,expired:.expired,digest:.digest,created_at:.created_at,expires_at:.expires_at,workflow_run:{id:.workflow_run.id,head_branch:.workflow_run.head_branch,head_sha:.workflow_run.head_sha}}]}' \
+            > /tmp/0b01-source/artifacts_precheck.json
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32811173598" \
+            --jq '{id:.id,head_branch:.head_branch,head_sha:.head_sha,status:.status,conclusion:.conclusion,created_at:.created_at,updated_at:.updated_at}' \
+            > /tmp/0b01-source/run_firewall.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/32811173598/artifacts" \
+            --jq '{artifacts:[.artifacts[] | {id:.id,name:.name,expired:.expired,digest:.digest,created_at:.created_at,expires_at:.expires_at,workflow_run:{id:.workflow_run.id,head_branch:.workflow_run.head_branch,head_sha:.workflow_run.head_sha}}]}' \
+            > /tmp/0b01-source/artifacts_firewall.json
+
+          if grep -RIE '"(email|avatar_url|user|actor|author|committer|triggering_actor)"[[:space:]]*:' /tmp/0b01-source; then
+            echo 'FORBIDDEN_PERSONAL_METADATA_KEY_FOUND'
+            exit 1
+          fi
+      - name: Execute real read and five frozen acceptance loops
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/core_shadow/0b01_source
+          python core_shadow_0b/real_case_0b01.py \
+            --source-dir /tmp/0b01-source \
+            --out-dir reports/core_shadow/0b01_source \
+            --run-id "${RUN_ID}" \
+            --commit "${SHA}" \
+            --branch "${BRANCH}" | tee /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01=PASS' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_1=PASS' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_2=PASS' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_3=PASS' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_4=PASS' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_5=PASS' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_CLEAN_1=LOOP_4' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_CLEAN_2=LOOP_5' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_OWNER=K0' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_OWNER_ACTION_REQUIRED=false' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_ALLOWED_EFFECT=READ_ONLY' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_EXTERNAL_ACTIONS=0' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_PRODUCTION_WRITES=0' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_NEW_CREDENTIALS=0' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_NEW_RUNNING_COST_EUR=0' /tmp/0b01.log
+          grep -Fx 'CORE_SHADOW_0B01_MERGE_AUTHORIZED=false' /tmp/0b01.log
+          sha256sum reports/core_shadow/0b01_source/manifest.json
+          sha256sum reports/core_shadow/0b01_source/source_bundle.json
+          sha256sum reports/core_shadow/0b01_source/evidence.json
+      - name: Persist minimized real-read evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0b01-source-${{ github.run_id }}
+          path: reports/core_shadow/0b01_source/
+          if-no-files-found: error
+          retention-days: 2
+
+  formal-readback:
+    name: formal-readback
+    needs: real-read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download minimized real-read artifact on fresh runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: core-shadow-0b01-source-${{ github.run_id }}
+          path: /tmp/0b01-source-artifact
+      - name: Independently reaccept real read and five loops
+        run: |
+          set -euo pipefail
+          mkdir -p reports/core_shadow/0b01_formal
+          python critical/core_shadow_0b01_formal.py \
+            --artifact-dir /tmp/0b01-source-artifact \
+            --out reports/core_shadow/0b01_formal/formal.json | tee /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_FORMAL=PASS' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_1=PASS' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_2=PASS' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_3=PASS' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_4=PASS' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_LOOP_5=PASS' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_CLEAN_1=LOOP_4' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_CLEAN_2=LOOP_5' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_OWNER=K0' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_OWNER_ACTION_REQUIRED=false' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_ALLOWED_EFFECT=READ_ONLY' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_EXTERNAL_ACTIONS=0' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_PRODUCTION_WRITES=0' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_NEW_CREDENTIALS=0' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_NEW_RUNNING_COST_EUR=0' /tmp/0b01-formal.log
+          grep -Fx 'CORE_SHADOW_0B01_MERGE_AUTHORIZED=false' /tmp/0b01-formal.log
+          sha256sum reports/core_shadow/0b01_formal/formal.json
+      - name: Persist formal 0B-01 acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0b01-formal-${{ github.run_id }}
+          path: reports/core_shadow/0b01_formal/
+          if-no-files-found: error
+          retention-days: 2
