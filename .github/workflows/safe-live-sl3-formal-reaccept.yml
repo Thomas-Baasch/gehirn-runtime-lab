@@ -1,0 +1,90 @@
+name: Safe-Live SL3 formal reacceptance after harness fix
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl3-formal-fix-001
+    paths:
+      - '.github/workflows/safe-live-sl3-formal-reaccept.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  TARGET_REPO: Thomas-Baasch/gehirn-runtime-lab
+  TARGET_BRANCH: runtime/safe-live-sl3-reversible-001
+  MARKER_PATH: .safe_live_runtime/sl3_01_marker.json
+  SOURCE_RUN_ID: '32815078229'
+
+jobs:
+  formal-reaccept:
+    name: formal-reaccept
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout independent formal evaluator and original authority surface
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download unchanged combined evidence from original real-effect run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: safe-live-sl3-combined-32815078229
+          path: /tmp/sl3-combined
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 32815078229
+      - name: Fresh read current target branch state with corrected boolean serialization
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl3-formal reports/safe_live/sl3_formal_reaccept
+          HEAD_SHA=$(gh api "repos/${TARGET_REPO}/branches/${TARGET_BRANCH}" --jq .commit.sha)
+          HEAD_TREE=$(gh api "repos/${TARGET_REPO}/git/commits/${HEAD_SHA}" --jq .tree.sha)
+          MARKER_ABSENT=true
+          if gh api "repos/${TARGET_REPO}/contents/${MARKER_PATH}?ref=${TARGET_BRANCH}" >/tmp/sl3-formal/unexpected-marker.json 2>/dev/null; then
+            MARKER_ABSENT=false
+          fi
+          python - <<PY
+          import json
+          from pathlib import Path
+          marker_absent = '${MARKER_ABSENT}' == 'true'
+          Path('/tmp/sl3-formal/current.json').write_text(json.dumps({'branch':'${TARGET_BRANCH}','head_sha':'${HEAD_SHA}','head_tree':'${HEAD_TREE}','marker_absent':marker_absent},sort_keys=True,indent=2)+'\n')
+          PY
+      - name: Independent formal reacceptance against unchanged real evidence
+        run: |
+          set -euo pipefail
+          python critical/safe_live_sl3_reversible_formal.py \
+            --combined /tmp/sl3-combined/combined.json \
+            --fresh-current /tmp/sl3-formal/current.json \
+            --workflow .github/workflows/safe-live-sl3-reversible.yml \
+            --out reports/safe_live/sl3_formal_reaccept/formal.json | tee /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_FORMAL=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_1=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_2=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_3=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_4=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_LOOP_5=PASS' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_CLEAN_1=LOOP_4' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_CLEAN_2=LOOP_5' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_STATE_RESTORED=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_AUDIT_PRESERVED=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_MARKER_ABSENT=true' /tmp/sl3-formal.log
+          grep -Fx 'SAFE_LIVE_SL3_SL4_AUTHORIZED=false' /tmp/sl3-formal.log
+          sha256sum reports/safe_live/sl3_formal_reaccept/formal.json
+      - name: Persist repaired formal acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: safe-live-sl3-formal-reaccept-${{ github.run_id }}
+          path: reports/safe_live/sl3_formal_reaccept/
+          if-no-files-found: error
+          retention-days: 2
