@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p reports/safe_live/sl5_02_material_delta_dryrun
-          python safe_live_sl5_02/acceptance.py \
+          python -m safe_live_sl5_02.acceptance \
             --out reports/safe_live/sl5_02_material_delta_dryrun/primary.json | tee /tmp/sl5-02-primary.log
           grep -Fx 'SAFE_LIVE_SL5_02_DRYRUN=PASS' /tmp/sl5-02-primary.log
           grep -Fx 'SAFE_LIVE_SL5_02_LOOP_1=PASS' /tmp/sl5-02-primary.log
