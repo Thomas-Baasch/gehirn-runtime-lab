@@ -1,0 +1,8 @@
+OWNER AUTHORITY RECORDED
+
+Owner instruction: "Ja, aktiviere SL5-01"
+Date: 2026-08-25
+
+Authority scope is limited to SAFE_LIVE_SL5_01_MATERIAL_MILESTONE_LOGGING_V0_1 and does not authorize any other issue, repository, role, data class, action class, merge, send, pay, delete, contract, policy or rights change.
+
+Activation itself is not a milestone-comment trigger.
