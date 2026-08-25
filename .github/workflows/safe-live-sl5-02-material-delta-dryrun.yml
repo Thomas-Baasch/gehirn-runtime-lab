@@ -1,0 +1,103 @@
+name: Safe-Live SL5-02 active-turn material delta dry-run
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl5-02-material-delta-dryrun-001
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact SL5-02 dry-run commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Syntax check
+        run: |
+          set -euo pipefail
+          python -m py_compile safe_live_sl5_02/policy.py safe_live_sl5_02/acceptance.py critical/safe_live_sl5_02_material_delta_formal.py
+      - name: Execute five-loop synthetic dry-run acceptance
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl5_02_material_delta_dryrun
+          python safe_live_sl5_02/acceptance.py \
+            --out reports/safe_live/sl5_02_material_delta_dryrun/primary.json | tee /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_DRYRUN=PASS' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_1=PASS' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_2=PASS' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_3=PASS' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_4=PASS' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_5=PASS' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_CLEAN_1=LOOP_4' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_CLEAN_2=LOOP_5' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_EXECUTE=false' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_DRIVE_WRITES=0' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_EXTERNAL_ACTIONS=0' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_PRODUCTION_WRITES=0' /tmp/sl5-02-primary.log
+          grep -Fx 'SAFE_LIVE_SL5_02_ACTIVATION_AUTHORIZED=false' /tmp/sl5-02-primary.log
+          sha256sum reports/safe_live/sl5_02_material_delta_dryrun/primary.json
+      - name: Persist primary dry-run evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl5-02-material-delta-primary-${{ github.run_id }}
+          path: reports/safe_live/sl5_02_material_delta_dryrun/
+          retention-days: 2
+          if-no-files-found: error
+
+  formal-readback:
+    needs: dry-run
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Download unchanged primary evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: safe-live-sl5-02-material-delta-primary-${{ github.run_id }}
+          path: /tmp/sl5-02-primary
+      - name: Independent formal reacceptance
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl5_02_material_delta_formal
+          python critical/safe_live_sl5_02_material_delta_formal.py \
+            --primary /tmp/sl5-02-primary/primary.json \
+            --workflow .github/workflows/safe-live-sl5-02-material-delta-dryrun.yml \
+            --out reports/safe_live/sl5_02_material_delta_formal/formal.json | tee /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_FORMAL=PASS' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_1=PASS' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_2=PASS' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_3=PASS' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_4=PASS' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_LOOP_5=PASS' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_CLEAN_1=LOOP_4' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_CLEAN_2=LOOP_5' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_EXECUTE=false' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_DRIVE_WRITES=0' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_EXTERNAL_ACTIONS=0' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_PRODUCTION_WRITES=0' /tmp/sl5-02-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_02_ACTIVATION_AUTHORIZED=false' /tmp/sl5-02-formal.log
+          sha256sum reports/safe_live/sl5_02_material_delta_formal/formal.json
+      - name: Persist formal evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl5-02-material-delta-formal-${{ github.run_id }}
+          path: reports/safe_live/sl5_02_material_delta_formal/
+          retention-days: 2
+          if-no-files-found: error
