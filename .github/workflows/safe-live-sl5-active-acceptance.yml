@@ -1,0 +1,142 @@
+name: Safe-Live SL5 active policy acceptance
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl5-active-001
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+
+jobs:
+  active-acceptance:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact active-policy commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Syntax checks
+        run: |
+          set -euo pipefail
+          python -m py_compile safe_live_sl5/active_policy_evaluator.py safe_live_sl5/active_acceptance.py critical/safe_live_sl5_active_formal.py
+      - name: Read exact current Issue 42 state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl5-active reports/safe_live/sl5_active
+          gh api "repos/${REPO}/issues/42" > /tmp/sl5-active/issue.json
+          gh api "repos/${REPO}/issues/42/comments" > /tmp/sl5-active/comments.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/sl5-active')
+          issue=json.loads((p/'issue.json').read_text())
+          comments=json.loads((p/'comments.json').read_text())
+          out={
+            'repo':'Thomas-Baasch/gehirn-runtime-lab',
+            'number':issue['number'],
+            'title':issue['title'],
+            'state':issue['state'],
+            'updated_at':issue['updated_at'],
+            'comment_bodies':[c.get('body') or '' for c in comments],
+          }
+          (p/'current.json').write_text(json.dumps(out,sort_keys=True,indent=2)+'\n')
+          PY
+      - name: Active policy five-loop acceptance
+        run: |
+          set -euo pipefail
+          python -m safe_live_sl5.active_acceptance \
+            --policy safe_live_sl5/policy_active_v0_1.json \
+            --current /tmp/sl5-active/current.json \
+            --out reports/safe_live/sl5_active/primary.json | tee /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_ACCEPTANCE=PASS' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_LOOP_1=PASS' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_LOOP_2=PASS' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_LOOP_3=PASS' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_LOOP_4=PASS' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_LOOP_5=PASS' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_CLEAN_1=LOOP_4' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_CLEAN_2=LOOP_5' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVATION_AUTHORIZED=true' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVATION_ITSELF_TRIGGERS_COMMENT=false' /tmp/sl5-active.log
+          grep -Fx 'SAFE_LIVE_SL5_EXTERNAL_ACTIONS_THIS_ACCEPTANCE=0' /tmp/sl5-active.log
+      - name: Persist primary active acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl5-active-primary-${{ github.run_id }}
+          path: reports/safe_live/sl5_active/
+          retention-days: 2
+          if-no-files-found: error
+
+  formal-readback:
+    needs: active-acceptance
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Download unchanged primary evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: safe-live-sl5-active-primary-${{ github.run_id }}
+          path: /tmp/sl5-active-primary
+      - name: Fresh independent currentness read
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl5-active-fresh reports/safe_live/sl5_active_formal
+          gh api "repos/${REPO}/issues/42" > /tmp/sl5-active-fresh/issue.json
+          gh api "repos/${REPO}/issues/42/comments" > /tmp/sl5-active-fresh/comments.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/sl5-active-fresh')
+          issue=json.loads((p/'issue.json').read_text())
+          comments=json.loads((p/'comments.json').read_text())
+          out={
+            'repo':'Thomas-Baasch/gehirn-runtime-lab',
+            'number':issue['number'],
+            'title':issue['title'],
+            'state':issue['state'],
+            'updated_at':issue['updated_at'],
+            'comment_bodies':[c.get('body') or '' for c in comments],
+          }
+          (p/'current.json').write_text(json.dumps(out,sort_keys=True,indent=2)+'\n')
+          PY
+      - name: Independent formal active-policy acceptance
+        run: |
+          set -euo pipefail
+          python critical/safe_live_sl5_active_formal.py \
+            --primary /tmp/sl5-active-primary/primary.json \
+            --fresh-current /tmp/sl5-active-fresh/current.json \
+            --out reports/safe_live/sl5_active_formal/formal.json | tee /tmp/sl5-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_FORMAL=PASS' /tmp/sl5-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVE_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl5-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVATION_AUTHORIZED=true' /tmp/sl5-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_ACTIVATION_ITSELF_TRIGGERS_COMMENT=false' /tmp/sl5-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL5_EXTERNAL_ACTIONS_THIS_ACCEPTANCE=0' /tmp/sl5-active-formal.log
+          sha256sum reports/safe_live/sl5_active_formal/formal.json
+      - name: Persist formal active acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl5-active-formal-${{ github.run_id }}
+          path: reports/safe_live/sl5_active_formal/
+          retention-days: 2
+          if-no-files-found: error
