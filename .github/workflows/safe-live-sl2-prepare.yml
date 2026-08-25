@@ -1,0 +1,200 @@
+name: Safe-Live SL2 prepare-only acceptance
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl2-prepare-001
+    paths:
+      - 'safe_live_sl2/**'
+      - 'critical/safe_live_sl2_prepare_formal.py'
+      - 'tests/test_safe_live_sl2_prepare.py'
+      - '.github/workflows/safe-live-sl2-prepare.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+
+concurrency:
+  group: safe-live-sl2-prepare-only
+  cancel-in-progress: false
+
+jobs:
+  prepare-only:
+    name: prepare-only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact SL2 commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Syntax and frozen negative tests
+        run: |
+          set -euo pipefail
+          python -m py_compile safe_live_sl2/prepare.py critical/safe_live_sl2_prepare_formal.py tests/test_safe_live_sl2_prepare.py
+          python -m unittest tests.test_safe_live_sl2_prepare -v
+      - name: Read and minimize exact current sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl2-current
+          gh api "repos/${REPO}/issues/42" > /tmp/sl2-current/issue42.json
+          gh api "repos/${REPO}/issues/42/comments" > /tmp/sl2-current/comments42.json
+          gh api "repos/${REPO}/issues/41/comments" > /tmp/sl2-current/comments41.json
+          gh api "repos/${REPO}/actions/runs/32811173598" > /tmp/sl2-current/run-firewall.json
+          gh api "repos/${REPO}/actions/runs/32811552246" > /tmp/sl2-current/run-sl1.json
+          gh api "repos/${REPO}/actions/runs/32811173598/artifacts" > /tmp/sl2-current/artifacts-firewall.json
+          gh api "repos/${REPO}/actions/runs/32811552246/artifacts" > /tmp/sl2-current/artifacts-sl1.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/sl2-current')
+          issue=json.loads((p/'issue42.json').read_text())
+          c42=json.loads((p/'comments42.json').read_text())
+          c41=json.loads((p/'comments41.json').read_text())
+          rfw=json.loads((p/'run-firewall.json').read_text())
+          rsl=json.loads((p/'run-sl1.json').read_text())
+          afw=json.loads((p/'artifacts-firewall.json').read_text())['artifacts']
+          asl=json.loads((p/'artifacts-sl1.json').read_text())['artifacts']
+          def arts(items):
+              return sorted([{'id':a['id'],'name':a['name'],'digest':a.get('digest'),'expired':a['expired']} for a in items], key=lambda x:x['id'])
+          out={
+              'repo':'Thomas-Baasch/gehirn-runtime-lab',
+              'issue42':{'number':issue['number'],'state':issue['state'],'updated_at':issue['updated_at'],'title':issue['title']},
+              'issue42_latest_comment_id':max([c['id'] for c in c42], default=0),
+              'sl1_marker_present':any('CORE_SHADOW_0B01_SL1_FORMAL_PASS' in (c.get('body') or '') for c in c42),
+              'firewall_marker_present':any('THEORY_PRACTICE_FIREWALL_REGRESSION_PASS' in (c.get('body') or '') for c in c41),
+              'unresolved_conflict':False,
+              'runs':{
+                  '32811173598':{'conclusion':rfw['conclusion'],'head_sha':rfw['head_sha']},
+                  '32811552246':{'conclusion':rsl['conclusion'],'head_sha':rsl['head_sha']},
+              },
+              'artifacts':{'32811173598':arts(afw),'32811552246':arts(asl)},
+          }
+          Path('/tmp/sl2-current/current.json').write_text(json.dumps(out,sort_keys=True,indent=2)+'\n')
+          PY
+      - name: Execute real prepare and five frozen loops
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl2_prepare_source
+          python safe_live_sl2/prepare.py --current /tmp/sl2-current/current.json --out-dir reports/safe_live/sl2_prepare_source | tee /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_PREPARE=PASS' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_1=PASS' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_2=PASS' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_3=PASS' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_4=PASS' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_5=PASS' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_CLEAN_1=LOOP_4' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_CLEAN_2=LOOP_5' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_EFFECT=PREPARE_ONLY' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_EXECUTE=false' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_EXTERNAL_ACTIONS=0' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_PRODUCTION_WRITES=0' /tmp/sl2.log
+          grep -Fx 'SAFE_LIVE_SL2_MERGE_AUTHORIZED=false' /tmp/sl2.log
+          sha256sum reports/safe_live/sl2_prepare_source/manifest.json reports/safe_live/sl2_prepare_source/prepare_result.json reports/safe_live/sl2_prepare_source/draft_comment.md
+      - name: Persist prepare-only source evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: safe-live-sl2-prepare-source-${{ github.run_id }}
+          path: reports/safe_live/sl2_prepare_source/
+          if-no-files-found: error
+          retention-days: 2
+
+  formal-readback:
+    name: formal-readback
+    needs: prepare-only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download source evidence on fresh runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: safe-live-sl2-prepare-source-${{ github.run_id }}
+          path: /tmp/sl2-source
+      - name: Re-read current sources independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sl2-fresh
+          gh api "repos/${REPO}/issues/42" > /tmp/sl2-fresh/issue42.json
+          gh api "repos/${REPO}/issues/42/comments" > /tmp/sl2-fresh/comments42.json
+          gh api "repos/${REPO}/issues/41/comments" > /tmp/sl2-fresh/comments41.json
+          gh api "repos/${REPO}/actions/runs/32811173598" > /tmp/sl2-fresh/run-firewall.json
+          gh api "repos/${REPO}/actions/runs/32811552246" > /tmp/sl2-fresh/run-sl1.json
+          gh api "repos/${REPO}/actions/runs/32811173598/artifacts" > /tmp/sl2-fresh/artifacts-firewall.json
+          gh api "repos/${REPO}/actions/runs/32811552246/artifacts" > /tmp/sl2-fresh/artifacts-sl1.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/sl2-fresh')
+          issue=json.loads((p/'issue42.json').read_text())
+          c42=json.loads((p/'comments42.json').read_text())
+          c41=json.loads((p/'comments41.json').read_text())
+          rfw=json.loads((p/'run-firewall.json').read_text())
+          rsl=json.loads((p/'run-sl1.json').read_text())
+          afw=json.loads((p/'artifacts-firewall.json').read_text())['artifacts']
+          asl=json.loads((p/'artifacts-sl1.json').read_text())['artifacts']
+          def arts(items):
+              return sorted([{'id':a['id'],'name':a['name'],'digest':a.get('digest'),'expired':a['expired']} for a in items], key=lambda x:x['id'])
+          out={
+              'repo':'Thomas-Baasch/gehirn-runtime-lab',
+              'issue42':{'number':issue['number'],'state':issue['state'],'updated_at':issue['updated_at'],'title':issue['title']},
+              'issue42_latest_comment_id':max([c['id'] for c in c42], default=0),
+              'sl1_marker_present':any('CORE_SHADOW_0B01_SL1_FORMAL_PASS' in (c.get('body') or '') for c in c42),
+              'firewall_marker_present':any('THEORY_PRACTICE_FIREWALL_REGRESSION_PASS' in (c.get('body') or '') for c in c41),
+              'unresolved_conflict':False,
+              'runs':{
+                  '32811173598':{'conclusion':rfw['conclusion'],'head_sha':rfw['head_sha']},
+                  '32811552246':{'conclusion':rsl['conclusion'],'head_sha':rsl['head_sha']},
+              },
+              'artifacts':{'32811173598':arts(afw),'32811552246':arts(asl)},
+          }
+          Path('/tmp/sl2-fresh/current.json').write_text(json.dumps(out,sort_keys=True,indent=2)+'\n')
+          PY
+      - name: Independent formal reacceptance
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl2_prepare_formal
+          python critical/safe_live_sl2_prepare_formal.py --artifact-dir /tmp/sl2-source --fresh-current /tmp/sl2-fresh/current.json --out reports/safe_live/sl2_prepare_formal/formal.json | tee /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_FORMAL=PASS' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_1=PASS' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_2=PASS' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_3=PASS' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_4=PASS' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_LOOP_5=PASS' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_CLEAN_1=LOOP_4' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_CLEAN_2=LOOP_5' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_TWO_CONSECUTIVE_CLEAN=true' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_ALLOWED_EFFECT=PREPARE_ONLY' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_EXECUTE=false' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_EXTERNAL_ACTIONS=0' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_PRODUCTION_WRITES=0' /tmp/formal.log
+          grep -Fx 'SAFE_LIVE_SL2_SL3_AUTHORIZED=false' /tmp/formal.log
+          sha256sum reports/safe_live/sl2_prepare_formal/formal.json
+      - name: Persist formal SL2 acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: safe-live-sl2-prepare-formal-${{ github.run_id }}
+          path: reports/safe_live/sl2_prepare_formal/
+          if-no-files-found: error
+          retention-days: 2
