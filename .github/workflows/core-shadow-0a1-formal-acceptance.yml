@@ -1,0 +1,95 @@
+name: Core Shadow 0A.1 formal artifact acceptance
+
+on:
+  push:
+    branches:
+      - runtime/core-shadow-0a1-001
+    paths:
+      - 'critical/core_shadow_0a1_formal_acceptance.py'
+      - 'tests/test_core_shadow_0a1_formal_acceptance.py'
+      - '.github/workflows/core-shadow-0a1-formal-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: core-shadow-0a1-formal-acceptance
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: '32799743510'
+  SOURCE_COMMIT: 'c0bdcc7b776225acb6ab9ff49b0ea6b7042df1bf'
+  SOURCE_ARTIFACT_ID: '9546075334'
+  SOURCE_ARTIFACT_NAME: 'core-shadow-0a1-evidence-32799743510'
+  SOURCE_ARTIFACT_DIGEST: 'sha256:d8699dfb4342cdaebd64d8f5310fdc7c8279e52b6e7d9bcf68fc7a6732771141'
+
+jobs:
+  formal-acceptance:
+    name: formal-artifact-readback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout independent evaluator commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Formal evaluator unit and negative tests
+        run: python -m unittest tests.test_core_shadow_0a1_formal_acceptance -v
+      - name: Fetch frozen GitHub source records and immutable artifact read-only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/source-evidence
+          gh api "repos/${REPO}/actions/runs/${SOURCE_RUN_ID}" > /tmp/source-run.json
+          gh api "repos/${REPO}/actions/runs/${SOURCE_RUN_ID}/jobs?per_page=100" > /tmp/source-jobs.json
+          gh api "repos/${REPO}/actions/runs/${SOURCE_RUN_ID}/artifacts" > /tmp/source-artifacts.json
+          gh run download "${SOURCE_RUN_ID}" -n "${SOURCE_ARTIFACT_NAME}" -D /tmp/source-evidence
+          test -f /tmp/source-evidence/core_shadow_0a1_evidence.json
+          test -f /tmp/source-evidence/core_shadow_0a1_acceptance.json
+          test -f /tmp/source-evidence/core_shadow_0a1_authority_surface.json
+          test -f /tmp/source-evidence/core_shadow_0a1_source_manifest.json
+      - name: Independently reaccept frozen 0A.1 artifact
+        run: |
+          set -euo pipefail
+          mkdir -p reports/core_shadow
+          python critical/core_shadow_0a1_formal_acceptance.py \
+            --artifact-dir /tmp/source-evidence \
+            --source-run-json /tmp/source-run.json \
+            --source-jobs-json /tmp/source-jobs.json \
+            --source-artifacts-json /tmp/source-artifacts.json \
+            --expected-run-id "${SOURCE_RUN_ID}" \
+            --expected-commit "${SOURCE_COMMIT}" \
+            --expected-artifact-id "${SOURCE_ARTIFACT_ID}" \
+            --expected-artifact-name "${SOURCE_ARTIFACT_NAME}" \
+            --expected-artifact-digest "${SOURCE_ARTIFACT_DIGEST}" \
+            --out reports/core_shadow/core_shadow_0a1_formal_acceptance.json | tee /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_STATUS=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_EVIDENCE_CLASS=SYNTHETIC_RUNTIME_FORMALLY_REACCEPTED' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_GOLDEN=20/20' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_GEORG_IN_FLOW=true' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_COMPOSITE_ORPHAN_PREVENTION=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_COMMIT_TIME_CURRENTNESS=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_EXTERNAL_ACTIONS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_PRODUCTION_WRITES=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_CREDENTIALS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_NEW_RUNNING_COST_EUR=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_MERGE_AUTHORIZED=false' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0A1_FORMAL_0B_AUTHORIZED=false' /tmp/formal.log
+          sha256sum reports/core_shadow/core_shadow_0a1_formal_acceptance.json
+      - name: Upload immutable formal acceptance artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0a1-formal-acceptance-${{ github.run_id }}
+          path: reports/core_shadow/core_shadow_0a1_formal_acceptance.json
+          if-no-files-found: error
+          retention-days: 2
