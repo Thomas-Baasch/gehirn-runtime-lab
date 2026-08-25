@@ -1,0 +1,32 @@
+{
+  "policy_id": "SAFE_LIVE_SL5_01_MATERIAL_MILESTONE_LOGGING_V0_1",
+  "status": "ACTIVE",
+  "active_from": "2026-08-25",
+  "review_by": "2026-09-01",
+  "target_repo": "Thomas-Baasch/gehirn-runtime-lab",
+  "target_issue": 42,
+  "target_title": "CORE-SHADOW 0B – Readiness Precheck + Realfall 0B-01",
+  "allowed_effect": "ISSUE_COMMENT",
+  "execute": true,
+  "material_only": true,
+  "max_comments_per_milestone_key": 1,
+  "bootstrap_activation_is_not_trigger": true,
+  "kill_switch": true,
+  "no_inheritance": true,
+  "postcommit_readback_required": true,
+  "forbidden_effects": [
+    "ISSUE_CLOSE",
+    "ISSUE_BODY_UPDATE",
+    "LABEL_CHANGE",
+    "ASSIGNEE_CHANGE",
+    "PR_WRITE",
+    "MERGE",
+    "CODE_WRITE",
+    "POLICY_WRITE",
+    "SEND",
+    "PAY",
+    "DELETE",
+    "CONTRACT",
+    "RIGHTS"
+  ]
+}
