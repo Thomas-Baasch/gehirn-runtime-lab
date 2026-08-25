@@ -1,0 +1,126 @@
+name: Core Shadow theory-practice firewall regression
+
+on:
+  push:
+    branches:
+      - runtime/core-shadow-firewall-regression-001
+    paths:
+      - 'core_shadow_0b/theory_practice_firewall_regression.py'
+      - 'critical/core_shadow_theory_practice_firewall_formal.py'
+      - 'tests/test_core_shadow_theory_practice_firewall.py'
+      - '.github/workflows/core-shadow-theory-practice-firewall-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-shadow-theory-practice-firewall-regression
+  cancel-in-progress: false
+
+jobs:
+  produce-regression:
+    name: produce-regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact regression commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Syntax and negative tests
+        run: |
+          set -euo pipefail
+          python -m py_compile core_shadow_0b/theory_practice_firewall_regression.py critical/core_shadow_theory_practice_firewall_formal.py tests/test_core_shadow_theory_practice_firewall.py
+          python -m unittest tests.test_core_shadow_theory_practice_firewall -v
+      - name: Execute five frozen regression loops
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/core_shadow/theory_practice_firewall_source
+          python core_shadow_0b/theory_practice_firewall_regression.py \
+            --out-dir reports/core_shadow/theory_practice_firewall_source \
+            --run-id "${RUN_ID}" \
+            --commit "${SHA}" \
+            --branch "${BRANCH}" | tee /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_REGRESSION=PASS' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_1=PASS' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_2=PASS' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_3=PASS' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_4=PASS' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_5=PASS' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_CLEAN_1=LOOP_4' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_CLEAN_2=LOOP_5' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_THEORY_PROMOTIONS=0' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_EXTERNAL_ACTIONS=0' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_PRODUCTION_WRITES=0' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_NEW_CREDENTIALS=0' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_NEW_RUNNING_COST_EUR=0' /tmp/firewall.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_MERGE_AUTHORIZED=false' /tmp/firewall.log
+          sha256sum reports/core_shadow/theory_practice_firewall_source/manifest.json
+          sha256sum reports/core_shadow/theory_practice_firewall_source/evidence.json
+      - name: Persist frozen regression artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-theory-practice-firewall-source-${{ github.run_id }}
+          path: reports/core_shadow/theory_practice_firewall_source/
+          if-no-files-found: error
+          retention-days: 2
+
+  formal-readback:
+    name: formal-readback
+    needs: produce-regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download persisted regression artifact into fresh runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: core-shadow-theory-practice-firewall-source-${{ github.run_id }}
+          path: /tmp/firewall-source
+      - name: Independently reaccept all five loops
+        run: |
+          set -euo pipefail
+          mkdir -p reports/core_shadow/theory_practice_firewall_formal
+          python critical/core_shadow_theory_practice_firewall_formal.py \
+            --artifact-dir /tmp/firewall-source \
+            --out reports/core_shadow/theory_practice_firewall_formal/formal.json | tee /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_FORMAL=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_1=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_2=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_3=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_4=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_LOOP_5=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_CLEAN_1=LOOP_4' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_CLEAN_2=LOOP_5' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_THEORY_PROMOTIONS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_EXTERNAL_ACTIONS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_PRODUCTION_WRITES=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_NEW_CREDENTIALS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_NEW_RUNNING_COST_EUR=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_FIREWALL_MERGE_AUTHORIZED=false' /tmp/formal.log
+          sha256sum reports/core_shadow/theory_practice_firewall_formal/formal.json
+      - name: Persist formal regression acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-theory-practice-firewall-formal-${{ github.run_id }}
+          path: reports/core_shadow/theory_practice_firewall_formal/
+          if-no-files-found: error
+          retention-days: 2
