@@ -1,0 +1,190 @@
+name: Core Shadow 0B readiness precheck
+
+on:
+  push:
+    branches:
+      - runtime/core-shadow-0b-001
+    paths:
+      - 'core_shadow_0b/**'
+      - 'critical/core_shadow_0b_precheck_authority_gate.py'
+      - 'critical/core_shadow_0b_precheck_formal.py'
+      - 'tests/test_core_shadow_0b_precheck.py'
+      - '.github/workflows/core-shadow-0b-precheck.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+
+concurrency:
+  group: core-shadow-0b-readiness-precheck
+  cancel-in-progress: false
+
+jobs:
+  produce-precheck:
+    name: produce-precheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact precheck commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Syntax and negative tests
+        run: |
+          set -euo pipefail
+          python -m py_compile core_shadow_0b/precheck.py critical/core_shadow_0b_precheck_authority_gate.py critical/core_shadow_0b_precheck_formal.py tests/test_core_shadow_0b_precheck.py
+          python -m unittest tests.test_core_shadow_0b_precheck -v
+      - name: Verify ephemeral same-repo read-only access works
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}" >/tmp/repo.json
+          gh api "repos/${REPO}/issues/42" >/tmp/issue.json
+          gh api "repos/${REPO}/actions/runs/${RUN_ID}" >/tmp/run.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          repo=json.loads(Path('/tmp/repo.json').read_text())
+          issue=json.loads(Path('/tmp/issue.json').read_text())
+          run=json.loads(Path('/tmp/run.json').read_text())
+          assert repo['full_name']=='Thomas-Baasch/gehirn-runtime-lab'
+          assert issue['number']==42
+          assert int(run['id'])>0
+          print('CORE_SHADOW_0B_PRECHECK_REAL_READS=PASS')
+          PY
+      - name: Static read-only and I1 topology gate
+        run: |
+          set -euo pipefail
+          python critical/core_shadow_0b_precheck_authority_gate.py | tee /tmp/authority.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_AUTHORITY=PASS' /tmp/authority.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_I1_TOPOLOGY=true' /tmp/authority.log
+      - name: Generate disposable precheck source artifact
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/core_shadow/0b_precheck_source
+          python core_shadow_0b/precheck.py generate \
+            --out-dir reports/core_shadow/0b_precheck_source \
+            --run-id "${RUN_ID}" \
+            --commit "${SHA}" \
+            --branch "${BRANCH}"
+          cp reports/core_shadow/core_shadow_0b_precheck_authority.json reports/core_shadow/0b_precheck_source/core_shadow_0b_precheck_authority.json
+          sha256sum reports/core_shadow/0b_precheck_source/manifest.json
+          sha256sum reports/core_shadow/0b_precheck_source/events.json
+          sha256sum reports/core_shadow/0b_precheck_source/derived.json
+          sha256sum reports/core_shadow/0b_precheck_source/core_shadow_0b_precheck_authority.json
+      - name: Persist precheck source artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0b-precheck-source-${{ github.run_id }}
+          path: reports/core_shadow/0b_precheck_source/
+          if-no-files-found: error
+          retention-days: 2
+
+  fresh-restore:
+    name: fresh-restore
+    needs: produce-precheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout restore code only
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download persisted source artifact into fresh runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: core-shadow-0b-precheck-source-${{ github.run_id }}
+          path: /tmp/precheck-source
+      - name: Delete derived state and rebuild from events
+        run: |
+          set -euo pipefail
+          cp -a /tmp/precheck-source /tmp/restore-work
+          mkdir -p reports/core_shadow/0b_precheck_restore
+          python core_shadow_0b/precheck.py restore \
+            --artifact-dir /tmp/restore-work \
+            --out reports/core_shadow/0b_precheck_restore/restore.json | tee /tmp/restore.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_RESTORE=PASS' /tmp/restore.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_FRESH_PROCESS=true' /tmp/restore.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_DERIVED_DELETED=true' /tmp/restore.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_EXTERNAL_ACTIONS=0' /tmp/restore.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_NEW_CREDENTIALS=0' /tmp/restore.log
+          test ! -e /tmp/restore-work/derived.json
+          sha256sum reports/core_shadow/0b_precheck_restore/restore.json
+      - name: Persist restore proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0b-precheck-restore-${{ github.run_id }}
+          path: reports/core_shadow/0b_precheck_restore/
+          if-no-files-found: error
+          retention-days: 2
+
+  restore-formal:
+    name: restore-formal
+    needs:
+      - produce-precheck
+      - fresh-restore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+          check-latest: false
+      - name: Download source and fresh-restore artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: core-shadow-0b-precheck-*-${{ github.run_id }}
+          path: /tmp/precheck-artifacts
+      - name: Independently reaccept precheck artifacts
+        run: |
+          set -euo pipefail
+          SOURCE="/tmp/precheck-artifacts/core-shadow-0b-precheck-source-${GITHUB_RUN_ID}"
+          RESTORE="/tmp/precheck-artifacts/core-shadow-0b-precheck-restore-${GITHUB_RUN_ID}/restore.json"
+          mkdir -p reports/core_shadow/0b_precheck_formal
+          python critical/core_shadow_0b_precheck_formal.py \
+            --source-dir "${SOURCE}" \
+            --restore-result "${RESTORE}" \
+            --authority "${SOURCE}/core_shadow_0b_precheck_authority.json" \
+            --out reports/core_shadow/0b_precheck_formal/formal.json | tee /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_PRECHECK_FORMAL=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_H0B06=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_H0B07=PASS_I1_LOGICALLY_SEPARATE_PRECHECK' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_H0B08=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_H0B09=PASS' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_REAL_CASE_READ_EXECUTED=false' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_EXTERNAL_ACTIONS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_NEW_CREDENTIALS=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_NEW_RUNNING_COST_EUR=0' /tmp/formal.log
+          grep -Fx 'CORE_SHADOW_0B_MERGE_AUTHORIZED=false' /tmp/formal.log
+          sha256sum reports/core_shadow/0b_precheck_formal/formal.json
+      - name: Persist formal precheck acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0b-precheck-formal-${{ github.run_id }}
+          path: reports/core_shadow/0b_precheck_formal/
+          if-no-files-found: error
+          retention-days: 2
