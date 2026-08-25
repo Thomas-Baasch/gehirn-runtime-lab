@@ -1,0 +1,1 @@
+SAFE_LIVE_SL5_01 activation package is ready for formal active-policy acceptance on runtime/safe-live-sl5-active-001. No milestone comment has been created by activation itself.
