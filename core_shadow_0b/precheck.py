@@ -87,9 +87,12 @@ def generate(out_dir: Path, run_id: str, commit: str, branch: str) -> dict[str, 
 
 
 def restore(artifact_dir: Path) -> dict[str, Any]:
-    manifest = json.loads((artifact_dir / "manifest.json").read_text(encoding="utf-8"))
-    event_doc = json.loads((artifact_dir / "events.json").read_text(encoding="utf-8"))
-    derived_doc = json.loads((artifact_dir / "derived.json").read_text(encoding="utf-8"))
+    manifest_path = artifact_dir / "manifest.json"
+    event_path = artifact_dir / "events.json"
+    derived_path = artifact_dir / "derived.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    event_doc = json.loads(event_path.read_text(encoding="utf-8"))
+    derived_doc = json.loads(derived_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != "core-shadow-0b.precheck-manifest.v1":
         raise ValueError("manifest_schema_invalid")
     if manifest.get("synthetic_precheck_only") is not True:
@@ -106,12 +109,15 @@ def restore(artifact_dir: Path) -> dict[str, Any]:
     }.items():
         if manifest.get(key) != expected:
             raise ValueError(f"manifest_boundary_invalid:{key}")
-    for name in ("events.json", "derived.json"):
-        observed = sha256_bytes((artifact_dir / name).read_bytes())
+    for name, path in (("events.json", event_path), ("derived.json", derived_path)):
+        observed = sha256_bytes(path.read_bytes())
         if manifest.get("files", {}).get(name) != observed:
             raise ValueError(f"artifact_hash_mismatch:{name}")
-    rebuilt = rebuild(event_doc.get("events") or [])
     expected_derived = {"case_id": CASE_ID, "status": derived_doc.get("status"), "source": "EVENT_REBUILD"}
+    derived_path.unlink()
+    if derived_path.exists():
+        raise ValueError("derived_delete_failed")
+    rebuilt = rebuild(event_doc.get("events") or [])
     if rebuilt != expected_derived:
         raise ValueError("fresh_process_rebuild_mismatch")
     return {
@@ -120,7 +126,7 @@ def restore(artifact_dir: Path) -> dict[str, Any]:
         "source_run_id": manifest["source_run_id"],
         "source_commit": manifest["source_commit"],
         "source_branch": manifest["source_branch"],
-        "manifest_sha256": sha256_bytes((artifact_dir / "manifest.json").read_bytes()),
+        "manifest_sha256": sha256_bytes(manifest_path.read_bytes()),
         "event_rebuild": rebuilt,
         "derived_deleted_before_rebuild": True,
         "artifact_hashes_verified": True,
@@ -160,6 +166,7 @@ def main() -> int:
     print("CORE_SHADOW_0B_PRECHECK_RESTORE=PASS")
     print("CORE_SHADOW_0B_PRECHECK_FRESH_PROCESS=true")
     print("CORE_SHADOW_0B_PRECHECK_HASHES=true")
+    print("CORE_SHADOW_0B_PRECHECK_DERIVED_DELETED=true")
     print("CORE_SHADOW_0B_PRECHECK_EXTERNAL_ACTIONS=0")
     print("CORE_SHADOW_0B_PRECHECK_PRODUCTION_WRITES=0")
     print("CORE_SHADOW_0B_PRECHECK_NEW_CREDENTIALS=0")
