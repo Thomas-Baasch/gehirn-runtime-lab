@@ -61,9 +61,58 @@ jobs:
           grep -Fx 'CORE_SHADOW_0A1_CREDENTIALS=0' /tmp/core-shadow-0a1.log
           grep -Fx 'CORE_SHADOW_0A1_NEW_RUNNING_COST_EUR=0' /tmp/core-shadow-0a1.log
           grep -Fx 'CORE_SHADOW_0A1_MERGE_AUTHORIZED=false' /tmp/core-shadow-0a1.log
-      - name: Print immutable evidence digests
+      - name: Build immutable source manifest and print evidence digests
+        env:
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          sha256sum reports/core_shadow/core_shadow_0a1_evidence.json
-          sha256sum reports/core_shadow/core_shadow_0a1_acceptance.json
-          sha256sum reports/core_shadow/core_shadow_0a1_authority_surface.json
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path('reports/core_shadow')
+          names=[
+              'core_shadow_0a1_evidence.json',
+              'core_shadow_0a1_acceptance.json',
+              'core_shadow_0a1_authority_surface.json',
+          ]
+          digests={}
+          for name in names:
+              data=(root/name).read_bytes()
+              digests[name]=hashlib.sha256(data).hexdigest()
+          manifest={
+              'schema':'core-shadow-0a1.source-manifest.v1',
+              'source_run_id':int(os.environ['SOURCE_RUN_ID']),
+              'source_commit':os.environ['SOURCE_COMMIT'],
+              'source_branch':os.environ['SOURCE_BRANCH'],
+              'contract_drive_id':'1YMD3ynywpfgKYY-v7dzN4eqcx6mA0Pm9RLBjPI7hwjg',
+              'expected_job':'core-shadow-0a1-20of20',
+              'golden':'20/20',
+              'restart_equal':True,
+              'rebuild_equal':True,
+              'authority_surface':'PASS',
+              'independence_class':'I0_METHOD_SEPARATE_CODEPATH',
+              'external_actions':0,
+              'production_writes':0,
+              'credentials_used':0,
+              'new_running_cost_eur':0,
+              'merge_authorized':False,
+              'file_sha256':digests,
+          }
+          (root/'core_shadow_0a1_source_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,sort_keys=True,indent=2)+'\n',encoding='utf-8')
+          for name,digest in digests.items():
+              print(f'{digest}  {root/name}')
+          print(hashlib.sha256((root/'core_shadow_0a1_source_manifest.json').read_bytes()).hexdigest(), root/'core_shadow_0a1_source_manifest.json')
+          PY
+      - name: Upload immutable synthetic evidence artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-shadow-0a1-evidence-${{ github.run_id }}
+          path: |
+            reports/core_shadow/core_shadow_0a1_evidence.json
+            reports/core_shadow/core_shadow_0a1_acceptance.json
+            reports/core_shadow/core_shadow_0a1_authority_surface.json
+            reports/core_shadow/core_shadow_0a1_source_manifest.json
+          if-no-files-found: error
+          retention-days: 2
