@@ -91,8 +91,6 @@ def restore(artifact_dir: Path) -> dict[str, Any]:
     event_path = artifact_dir / "events.json"
     derived_path = artifact_dir / "derived.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    event_doc = json.loads(event_path.read_text(encoding="utf-8"))
-    derived_doc = json.loads(derived_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != "core-shadow-0b.precheck-manifest.v1":
         raise ValueError("manifest_schema_invalid")
     if manifest.get("synthetic_precheck_only") is not True:
@@ -113,6 +111,8 @@ def restore(artifact_dir: Path) -> dict[str, Any]:
         observed = sha256_bytes(path.read_bytes())
         if manifest.get("files", {}).get(name) != observed:
             raise ValueError(f"artifact_hash_mismatch:{name}")
+    event_doc = json.loads(event_path.read_text(encoding="utf-8"))
+    derived_doc = json.loads(derived_path.read_text(encoding="utf-8"))
     expected_derived = {"case_id": CASE_ID, "status": derived_doc.get("status"), "source": "EVENT_REBUILD"}
     derived_path.unlink()
     if derived_path.exists():
