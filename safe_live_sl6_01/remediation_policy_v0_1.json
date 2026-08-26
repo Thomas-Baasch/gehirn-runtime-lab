@@ -2,7 +2,7 @@
   "policy_id": "SAFE_LIVE_SL6_01_THREE_CELL_ORCHESTRATION_V0_1",
   "finding_id": "SL6-LIVE-F01",
   "remediation_id": "SAFE_LIVE_SL6_01_LIVE_F01_DURABLE_TURN_CHILD_BUDGET_V0_1",
-  "remediation_status": "REVALIDATION_CANDIDATE",
+  "remediation_status": "ACTIVE_REVALIDATED_ON_EXISTING_BACKEND",
   "previous_scope_only": true,
   "owner_authority_source": "Ja, aktiviere SL6-01.",
   "review_by": "2026-09-01",
@@ -35,5 +35,11 @@
   "live_loop_2_invalidated": true,
   "live_clean_counter_after_revalidation": 0,
   "remediation_tests_are_not_live_loops": true,
-  "operational_resume_requires_persistent_turn_ledger_backend": true
+  "operational_resume_requires_persistent_turn_ledger_backend": true,
+  "operational_backend_kind": "EXISTING_SL6_LIVE_OBSERVATION_JOURNAL",
+  "operational_backend_drive_id": "1lfGjCrQFAGO__4fmYGWQf9eVxQj-fjDmkLqYeLG8XWQ",
+  "operational_backend_binding_key": "SL6-TURN-LEDGER-BACKEND-BINDING-20260826-001",
+  "operational_backend_binding_verified": true,
+  "operational_backend_introduces_new_target": false,
+  "operational_backend_raw_chat_storage": false
 }
