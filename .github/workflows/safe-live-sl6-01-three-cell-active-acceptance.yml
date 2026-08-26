@@ -1,0 +1,102 @@
+name: Safe-Live SL6-01 Three-Cell Orchestration Active Acceptance
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl6-01-three-cell-active-001
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  active-acceptance:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact SL6-01 active commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Syntax and active acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile safe_live_sl6_01/active_policy_evaluator.py safe_live_sl6_01/active_acceptance.py critical/safe_live_sl6_01_three_cell_active_formal.py
+          mkdir -p reports/safe_live/sl6_01_three_cell_active
+          python -m safe_live_sl6_01.active_acceptance --out reports/safe_live/sl6_01_three_cell_active/primary.json | tee /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_ACCEPTANCE=PASS' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_1=PASS' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_2=PASS' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_3=PASS' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_4=PASS' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_5=PASS' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_CLEAN_1=LOOP_4' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_CLEAN_2=LOOP_5' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVATION_AUTHORIZED=true' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVATION_ITSELF_TRIGGERS_EFFECT=false' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_THIS_ACCEPTANCE_EXECUTES_CHILDREN=false' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_DRIVE_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-01-active-primary.log
+          grep -Fx 'SAFE_LIVE_SL6_01_GITHUB_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-01-active-primary.log
+          sha256sum reports/safe_live/sl6_01_three_cell_active/primary.json
+      - name: Persist primary active evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl6-01-active-primary-${{ github.run_id }}
+          path: reports/safe_live/sl6_01_three_cell_active/
+          retention-days: 2
+
+  formal-readback:
+    needs: active-acceptance
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout independent formal evaluator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Download unchanged primary evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: safe-live-sl6-01-active-primary-${{ github.run_id }}
+          path: /tmp/sl6-01-active-primary
+      - name: Independent formal reacceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl6_01_three_cell_active_formal
+          python critical/safe_live_sl6_01_three_cell_active_formal.py \
+            --primary /tmp/sl6-01-active-primary/primary.json \
+            --workflow .github/workflows/safe-live-sl6-01-three-cell-active-acceptance.yml \
+            --policy safe_live_sl6_01/active_policy_v0_1.json \
+            --out reports/safe_live/sl6_01_three_cell_active_formal/formal.json | tee /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_FORMAL=PASS' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_1=PASS' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_2=PASS' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_3=PASS' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_4=PASS' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_LOOP_5=PASS' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_CLEAN_1=LOOP_4' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_CLEAN_2=LOOP_5' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVATION_AUTHORIZED=true' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVATION_ITSELF_TRIGGERS_EFFECT=false' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_THIS_ACCEPTANCE_EXECUTES_CHILDREN=false' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_DRIVE_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-01-active-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_GITHUB_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-01-active-formal.log
+          sha256sum reports/safe_live/sl6_01_three_cell_active_formal/formal.json
+      - name: Persist formal active evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl6-01-active-formal-${{ github.run_id }}
+          path: reports/safe_live/sl6_01_three_cell_active_formal/
+          retention-days: 2
