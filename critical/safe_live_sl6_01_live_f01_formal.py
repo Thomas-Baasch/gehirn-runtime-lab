@@ -4,6 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
+EXPECTED_BACKEND = "1lfGjCrQFAGO__4fmYGWQf9eVxQj-fjDmkLqYeLG8XWQ"
+EXPECTED_BINDING = "SL6-TURN-LEDGER-BACKEND-BINDING-20260826-001"
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -33,6 +36,7 @@ def main() -> int:
         "clean_2": primary.get("clean_2") == "LOOP_5",
         "two_consecutive_clean": primary.get("two_consecutive_clean") is True,
         "finding_bound": primary.get("finding_id") == "SL6-LIVE-F01" and policy.get("finding_id") == "SL6-LIVE-F01",
+        "remediation_revalidated": policy.get("remediation_status") == "ACTIVE_REVALIDATED_ON_EXISTING_BACKEND",
         "exact_scope_preserved": set(policy.get("allowed_cells", [])) == {"SL5-01", "SL5-02", "SL5-03"} and policy.get("previous_scope_only") is True,
         "same_limits_preserved": policy.get("max_effects_per_turn") == 3 and policy.get("max_commits_per_cell_per_turn") == 1,
         "same_order_preserved": policy.get("commit_order") == ["SL5-03", "SL5-02", "SL5-01"],
@@ -49,6 +53,10 @@ def main() -> int:
         "live_counter_not_rewritten": primary.get("live_loop_2_remains_invalidated") is True and primary.get("live_clean_counter_after_revalidation") == 0 and policy.get("live_clean_counter_after_revalidation") == 0,
         "remediation_not_live_loop": policy.get("remediation_tests_are_not_live_loops") is True,
         "operational_backend_required": policy.get("operational_resume_requires_persistent_turn_ledger_backend") is True,
+        "existing_backend_exact": policy.get("operational_backend_kind") == "EXISTING_SL6_LIVE_OBSERVATION_JOURNAL" and policy.get("operational_backend_drive_id") == EXPECTED_BACKEND,
+        "backend_binding_exact_and_verified": policy.get("operational_backend_binding_key") == EXPECTED_BINDING and policy.get("operational_backend_binding_verified") is True,
+        "backend_no_new_target": policy.get("operational_backend_introduces_new_target") is False,
+        "backend_no_raw_chat": policy.get("operational_backend_raw_chat_storage") is False,
         "ledger_has_atomic_pk": "PRIMARY KEY(turn_id, cell)" in ledger_source and "BEGIN IMMEDIATE" in ledger_source,
         "ledger_has_no_budget_delete_api": "DELETE FROM child_effect_budget" not in ledger_source and "DROP TABLE" not in ledger_source,
         "ledger_blocks_second_effect": "SECOND_CHILD_EFFECT_BLOCKED" in ledger_source and "BLOCK_CHILD_BUDGET_CONSUMED" in ledger_source,
@@ -74,6 +82,9 @@ def main() -> int:
         "previous_scope_only": True,
         "new_action_classes": 0,
         "new_targets": 0,
+        "operational_backend_drive_id": EXPECTED_BACKEND,
+        "operational_backend_binding_key": EXPECTED_BINDING,
+        "operational_backend_binding_verified": policy.get("operational_backend_binding_verified"),
         "operational_resume_requires_persistent_turn_ledger_backend": True,
         "this_readback_executes_children": False,
         "drive_writes_this_readback": 0,
@@ -94,6 +105,7 @@ def main() -> int:
     print("SAFE_LIVE_SL6_01_LIVE_F01_NEW_ACTION_CLASSES=0")
     print("SAFE_LIVE_SL6_01_LIVE_F01_NEW_TARGETS=0")
     print("SAFE_LIVE_SL6_01_LIVE_F01_OPERATIONAL_BACKEND_REQUIRED=true")
+    print("SAFE_LIVE_SL6_01_LIVE_F01_BACKEND_BINDING_VERIFIED=true")
     print("SAFE_LIVE_SL6_01_LIVE_F01_DRIVE_WRITES_THIS_READBACK=0")
     print("SAFE_LIVE_SL6_01_LIVE_F01_GITHUB_WRITES_THIS_READBACK=0")
     return 0 if passed else 1
