@@ -1,0 +1,29 @@
+{
+  "policy_id": "SAFE_LIVE_SL5_02_ACTIVE_TURN_MATERIAL_DELTA_PERSISTENCE_V0_1",
+  "status": "ACTIVE",
+  "active_from": "2026-08-26",
+  "review_by": "2026-09-02",
+  "allowed_targets": [
+    "1W-EV0ihSgcNOFEhbZLikXo2biTrFEBUsIeW9gUfiXjQ",
+    "1j3reLxLZcHs8jb3-_6KgsGTuqifI2uEwAXcJP7eVquQ",
+    "1g_pIv7jATAN7c3PJZ58JmKJiXtWyXGGZX7FGdiTqDHo"
+  ],
+  "allowed_delta_types": [
+    "STATE_DELTA",
+    "DECISION_DELTA",
+    "RULE_DELTA",
+    "OPEN_LOOP_DELTA",
+    "EVIDENCE_LOCATOR_DELTA",
+    "SUPERSESSION_CONFLICT_POINTER"
+  ],
+  "allowed_effect": "DRIVE_DERIVED_DELTA_APPEND_OR_NOOP_ONLY",
+  "execute": true,
+  "max_statement_chars": 320,
+  "background_allowed": false,
+  "raw_chat_allowed": false,
+  "home_system_write_allowed": false,
+  "activation_is_not_trigger": true,
+  "kill_switch": true,
+  "no_inheritance": true,
+  "postcommit_readback_required": true
+}
