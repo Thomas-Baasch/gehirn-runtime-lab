@@ -1,0 +1,24 @@
+{
+  "policy_id": "SAFE_LIVE_SL5_03_USCHI_OWNER_DIRECT_TASK_EVENT_CONTROL_V0_1",
+  "status": "ACTIVE",
+  "active_from": "2026-08-26",
+  "review_by": "2026-09-02",
+  "target_id": "1780hqjquZGsC_njEAJjd83CxsDeYgFIHCh_do9G5u7s",
+  "target_namespace": "SL5-03 OWNER-DIRECT TASK EVENTS V0.1",
+  "allowed_effect": "DRIVE_USCHI_TASK_EVENT_APPEND_OR_NOOP_ONLY",
+  "allowed_event_types": [
+    "TASK_CREATE_CONFIRMED",
+    "TASK_CORRECT_OWNER",
+    "TASK_CANCEL_OWNER",
+    "TASK_COMPLETE_OWNER"
+  ],
+  "max_title_chars": 180,
+  "execute": true,
+  "background_allowed": false,
+  "raw_chat_allowed": false,
+  "home_system_write_allowed": false,
+  "activation_is_not_trigger": true,
+  "kill_switch": true,
+  "no_inheritance": true,
+  "postcommit_readback_required": true
+}
