@@ -1,0 +1,136 @@
+name: Safe-Live SL6-01 Live-F01 Remediation Acceptance
+
+on:
+  push:
+    branches:
+      - runtime/safe-live-sl6-01-live-f01-remediation-001
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  remediation-acceptance:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact remediation candidate
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Compile remediation surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            safe_live_sl6_01/turn_effect_ledger.py \
+            safe_live_sl6_01/active_policy_evaluator.py \
+            safe_live_sl6_01/active_acceptance.py \
+            safe_live_sl6_01/remediation_acceptance.py \
+            critical/safe_live_sl6_01_live_f01_formal.py
+      - name: Regression existing active contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl6_01_live_f01
+          python -m safe_live_sl6_01.active_acceptance \
+            --out reports/safe_live/sl6_01_live_f01/existing_active_regression.json \
+            | tee /tmp/sl6-existing.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_ACCEPTANCE=PASS' /tmp/sl6-existing.log
+          grep -Fx 'SAFE_LIVE_SL6_01_ACTIVE_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl6-existing.log
+          grep -Fx 'SAFE_LIVE_SL6_01_DRIVE_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-existing.log
+          grep -Fx 'SAFE_LIVE_SL6_01_GITHUB_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-existing.log
+      - name: Run complete SL6-LIVE-F01 five-loop remediation acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m safe_live_sl6_01.remediation_acceptance \
+            --out reports/safe_live/sl6_01_live_f01/primary.json \
+            | tee /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_REMEDIATION=PASS' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_1=PASS' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_2=PASS' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_3=PASS' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_4=PASS' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_5=PASS' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_CLEAN_1=LOOP_4' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_CLEAN_2=LOOP_5' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_SECOND_SAME_CHILD_BLOCKED=true' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_CRASH_REOPEN_GUARD=true' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LIVE_CLEAN_COUNTER=0' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_NEW_ACTION_CLASSES=0' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_NEW_TARGETS=0' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_DRIVE_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-f01.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_GITHUB_WRITES_THIS_ACCEPTANCE=0' /tmp/sl6-f01.log
+          sha256sum reports/safe_live/sl6_01_live_f01/primary.json
+      - name: Run repository regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -v
+      - name: Persist remediation primary evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl6-01-live-f01-primary-${{ github.run_id }}
+          path: reports/safe_live/sl6_01_live_f01/
+          retention-days: 7
+
+  formal-readback:
+    needs: remediation-acceptance
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout independent readback code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14.7'
+      - name: Download unchanged remediation evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: safe-live-sl6-01-live-f01-primary-${{ github.run_id }}
+          path: /tmp/sl6-live-f01-primary
+      - name: Independent formal readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/safe_live/sl6_01_live_f01_formal
+          python critical/safe_live_sl6_01_live_f01_formal.py \
+            --primary /tmp/sl6-live-f01-primary/primary.json \
+            --policy safe_live_sl6_01/remediation_policy_v0_1.json \
+            --workflow .github/workflows/safe-live-sl6-01-live-f01-remediation.yml \
+            --ledger-source safe_live_sl6_01/turn_effect_ledger.py \
+            --evaluator-source safe_live_sl6_01/active_policy_evaluator.py \
+            --out reports/safe_live/sl6_01_live_f01_formal/formal.json \
+            | tee /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_FORMAL=PASS' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_1=PASS' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_2=PASS' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_3=PASS' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_4=PASS' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LOOP_5=PASS' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_CLEAN_1=LOOP_4' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_CLEAN_2=LOOP_5' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_TWO_CONSECUTIVE_CLEAN=true' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_LIVE_CLEAN_COUNTER=0' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_PREVIOUS_SCOPE_ONLY=true' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_NEW_ACTION_CLASSES=0' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_NEW_TARGETS=0' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_OPERATIONAL_BACKEND_REQUIRED=true' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_DRIVE_WRITES_THIS_READBACK=0' /tmp/sl6-f01-formal.log
+          grep -Fx 'SAFE_LIVE_SL6_01_LIVE_F01_GITHUB_WRITES_THIS_READBACK=0' /tmp/sl6-f01-formal.log
+          sha256sum reports/safe_live/sl6_01_live_f01_formal/formal.json
+      - name: Persist formal readback evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: safe-live-sl6-01-live-f01-formal-${{ github.run_id }}
+          path: reports/safe_live/sl6_01_live_f01_formal/
+          retention-days: 7
