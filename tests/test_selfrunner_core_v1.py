@@ -120,6 +120,19 @@ class SelfRunnerCoreV1Tests(unittest.TestCase):
         self.assertEqual(len(handles), 1)
         self.assertIn("MAIL_SENT", reason)
 
+    def test_forbidden_source_candidates_do_not_consume_mail_evidence_budget(self):
+        gw = gateway()
+        decision, handles, trace, reason = gw.plan_sources(
+            tenant_id="TENANT_A",
+            capability="communication.review",
+            candidate_aliases=["provider_core", "tenant_b_mail", "mail_in", "mail_sent"],
+        )
+        self.assertEqual(decision, Decision.ALLOW)
+        self.assertEqual(reason, "COMPLETE")
+        self.assertEqual([h.alias for h in handles], ["mail_in", "mail_sent"])
+        self.assertIn("AUTH:provider_core:DENY", trace.control_steps)
+        self.assertIn("AUTH:tenant_b_mail:DENY", trace.control_steps)
+
     def test_provider_core_is_zero_read_denied(self):
         gw = gateway()
         result = gw.authorize_source(
