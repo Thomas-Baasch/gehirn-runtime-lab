@@ -68,6 +68,17 @@ class SelfRunnerCoreV1Tests(unittest.TestCase):
         self.assertEqual(reason, "COMPLETE")
         self.assertEqual(trace.control_steps, ["NO_SOURCE_NEEDED"])
 
+    def test_email_request_binds_outcome_not_literal_inbox_action(self):
+        gw = gateway()
+        contract = gw.create_outcome_contract(
+            user_goal="Schau dir mal meine E-Mails an",
+            capability="communication.review",
+        )
+        self.assertEqual(contract.capability, "communication.review")
+        roles = set().union(*contract.required_evidence_roles)
+        self.assertEqual(roles, {"MAIL_INBOUND", "MAIL_SENT"})
+        self.assertEqual(contract.complete_when, "REQUIRED_EVIDENCE_COMPLETE")
+
     def test_public_manifest_updates_without_shipping_provider_core(self):
         gw = SelfRunnerGateway(
             gateway().bindings.values(),
