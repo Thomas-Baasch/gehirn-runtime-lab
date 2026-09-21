@@ -130,6 +130,14 @@ class PublicManifest:
     capabilities: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class OutcomeContract:
+    user_goal: str
+    capability: str
+    required_evidence_roles: tuple[FrozenSet[str], ...]
+    complete_when: str
+
+
 class SelfRunnerGateway:
     """Small provider-side contract surface for a future SelfRunner runtime.
 
@@ -183,6 +191,29 @@ class SelfRunnerGateway:
             product_version=self.product_version,
             policy_version=self.policy_version,
             capabilities=tuple(sorted(self.capabilities)),
+        )
+
+    def create_outcome_contract(
+        self, *, user_goal: str, capability: str
+    ) -> OutcomeContract:
+        """Bind the customer's intended outcome to capability completion.
+
+        The literal tool action is never the done condition. For example,
+        "check email" bound to communication.review is complete only after the
+        communication evidence contract is satisfied, not after reading Inbox.
+        """
+        spec = self.capabilities[capability]
+        required = spec.required_evidence_roles
+        complete_when = (
+            "DIRECT_CONVERSATION_RESPONSE"
+            if not required
+            else "REQUIRED_EVIDENCE_COMPLETE"
+        )
+        return OutcomeContract(
+            user_goal=user_goal,
+            capability=capability,
+            required_evidence_roles=required,
+            complete_when=complete_when,
         )
 
     @staticmethod
