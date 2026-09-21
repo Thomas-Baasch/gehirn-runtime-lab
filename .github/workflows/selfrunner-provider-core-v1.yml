@@ -29,3 +29,7 @@ jobs:
           python-version: "3.12"
       - name: Run isolated SelfRunner core tests
         run: python -m unittest tests/test_selfrunner_core_v1.py -v
+      - name: Reuse and verify existing safe continuation gate
+        env:
+          PYTHONPATH: .
+        run: python critical/safe_continuation_executor_v1_gate.py
