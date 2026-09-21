@@ -68,6 +68,19 @@ class SelfRunnerCoreV1Tests(unittest.TestCase):
         self.assertEqual(reason, "COMPLETE")
         self.assertEqual(trace.control_steps, ["NO_SOURCE_NEEDED"])
 
+    def test_public_manifest_updates_without_shipping_provider_core(self):
+        gw = SelfRunnerGateway(
+            gateway().bindings.values(),
+            product_version="provider-core-v1.1",
+            policy_version="policy-v2",
+        )
+        manifest = gw.public_manifest()
+        self.assertEqual(manifest.protocol_version, "selfrunner-client-v1")
+        self.assertEqual(manifest.product_version, "provider-core-v1.1")
+        self.assertEqual(manifest.policy_version, "policy-v2")
+        self.assertIn("communication.review", manifest.capabilities)
+        self.assertFalse(hasattr(manifest, "bindings"))
+
     def test_deep_path_only_on_material_trigger(self):
         gw = gateway()
         self.assertEqual(gw.choose_path(high_risk=True), PathMode.DEEP)
