@@ -27,3 +27,16 @@ Cross-tenant and provider-core source attempts are denied before provider conten
 ## Scope
 
 Synthetic lab only. No customer data, secrets, provider calls or live effects. This branch proves the runtime contract and regression tests; it is not a production deployment.
+
+
+## Updates without stale customer files
+
+The public client is deliberately stable and thin. At session start it reads only a client-safe public manifest from the provider gateway: protocol version, product version, policy version and available capability names. Capability logic remains server-side. Updating mail completeness, calendar currentness or another capability therefore does not require replacing a static prompt file in every customer project.
+
+## Continuation without making the customer the scheduler
+
+The provider core reuses the existing product-neutral SafeContinuationExecutor instead of inventing a second continuation engine. Only reversible internal continuation/recovery can be dispatched automatically by that component. External send, payment, delete, permission change, policy change and production publish remain outside its automatic authority.
+
+## Performance contract
+
+FAST is the default. Pure conversation requires zero source handles. A communication review plans at most two bounded source handles for inbound and sent evidence. Source authorization happens before content retrieval. Deep mode is entered only for material, high-risk, conflicting or repeatedly failing cases.
