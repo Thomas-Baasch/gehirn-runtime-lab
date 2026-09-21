@@ -122,6 +122,14 @@ class ActionDecision:
     requires_human_approval: bool
 
 
+@dataclass(frozen=True)
+class PublicManifest:
+    protocol_version: str
+    product_version: str
+    policy_version: str
+    capabilities: tuple[str, ...]
+
+
 class SelfRunnerGateway:
     """Small provider-side contract surface for a future SelfRunner runtime.
 
@@ -131,8 +139,16 @@ class SelfRunnerGateway:
     fast/deep routing, and send-once action gating.
     """
 
-    def __init__(self, bindings: Sequence[SourceBinding]):
+    def __init__(
+        self,
+        bindings: Sequence[SourceBinding],
+        *,
+        product_version: str = "provider-core-v1",
+        policy_version: str = "policy-v1",
+    ):
         self.bindings = {b.alias: b for b in bindings}
+        self.product_version = product_version
+        self.policy_version = policy_version
         self.capabilities = {
             "conversation": CapabilitySpec("conversation"),
             "communication.review": CapabilitySpec(
@@ -154,6 +170,20 @@ class SelfRunnerGateway:
                 max_source_handles=1,
             ),
         }
+
+    def public_manifest(self) -> PublicManifest:
+        """Return only client-safe version/capability metadata.
+
+        A stable client shell can fetch this at session start, so capability and
+        policy updates do not require copying provider logic into the customer
+        project.
+        """
+        return PublicManifest(
+            protocol_version="selfrunner-client-v1",
+            product_version=self.product_version,
+            policy_version=self.policy_version,
+            capabilities=tuple(sorted(self.capabilities)),
+        )
 
     @staticmethod
     def choose_path(
