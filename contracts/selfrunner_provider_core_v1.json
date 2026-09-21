@@ -1,0 +1,47 @@
+{
+  "schema": "selfrunner.provider-core.v1",
+  "version": "1.0.0",
+  "status": "LAB_IMPLEMENTED_NOT_LIVE",
+  "purpose": "Small provider-side seam that preserves speed, quality and security without exposing provider-core logic to customer projects.",
+  "runtime_principles": {
+    "default_path": "FAST",
+    "deep_path_triggers": [
+      "material_multi_step_outcome",
+      "protected_external_effect",
+      "high_risk",
+      "conflicting_authoritative_sources",
+      "repeated_failure"
+    ],
+    "simple_conversation_source_reads": 0,
+    "mail_review_required_evidence_roles": ["MAIL_INBOUND", "MAIL_SENT"],
+    "source_authorization_before_content_read": true,
+    "cross_tenant_zero_read": true,
+    "provider_core_zero_read_from_customer_path": true,
+    "protected_effect_exact_action_approval": true,
+    "semantic_dedupe_before_effect": true
+  },
+  "layers": [
+    "PUBLIC_CLIENT",
+    "CAPABILITY_GATEWAY",
+    "TENANT_AUTHORITY",
+    "PROVIDER_CORE",
+    "EGRESS_FILTER"
+  ],
+  "customer_project_must_not_contain": [
+    "provider prompts",
+    "provider method core",
+    "provider architecture",
+    "security heuristics",
+    "cross-tenant source credentials",
+    "provider test logic"
+  ],
+  "quality_contracts": {
+    "communication.review": {
+      "complete_only_if": ["MAIL_INBOUND", "MAIL_SENT"],
+      "missing_sent_behavior": "UNKNOWN_NO_SEND_RECOMMENDATION",
+      "duplicate_semantic_action": "DENY"
+    }
+  },
+  "live_effects": "NONE",
+  "production_claim": false
+}
