@@ -1,0 +1,31 @@
+name: SelfRunner Provider Core V1
+
+on:
+  push:
+    branches:
+      - selfrunner-provider-core-v1
+    paths:
+      - "selfrunner_core/**"
+      - "tests/test_selfrunner_core_v1.py"
+      - "contracts/selfrunner_provider_core_v1.json"
+      - ".github/workflows/selfrunner-provider-core-v1.yml"
+  pull_request:
+    paths:
+      - "selfrunner_core/**"
+      - "tests/test_selfrunner_core_v1.py"
+      - "contracts/selfrunner_provider_core_v1.json"
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run isolated SelfRunner core tests
+        run: python -m unittest tests/test_selfrunner_core_v1.py -v
