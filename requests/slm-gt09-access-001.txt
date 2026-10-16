@@ -1,0 +1,1 @@
+Execute SuperLocalMemory 4.0.8 native RBAC/session/profile access component probe for GT-09: project A allowed, project B denied by default, generic 401/403 no synthetic content/metadata marker leakage. Synthetic data only. Do not claim full sensitivity/purpose GT-09 PASS from RBAC evidence alone.
