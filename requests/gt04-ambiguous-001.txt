@@ -1,0 +1,1 @@
+Execute strict GT-04 ambiguous/unrouted probes for exact SLM 4.0.8, MemTensor/MemOS 2.0.30 and EverOS 1.2.3 using the literal input: Das sollten wir nächstes Jahr vielleicht verkaufen. No explicit project target. Synthetic-only runtime evidence. A strict router FAIL does not reject a memory-substrate role behind a separate router.
