@@ -1,0 +1,1 @@
+Execute the unchanged critical GT-04, GT-05, GT-06, GT-08, GT-09 and GT-12 suite against the separate product-neutral FailClosedCanonRouter/Governance component. Synthetic data only. Clean rerun after harness-only PYTHONPATH correction. Never reinterpret this as SLM, MemOS or EverOS candidate PASS.
