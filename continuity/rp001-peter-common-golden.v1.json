@@ -1,0 +1,98 @@
+{
+  "fixture_version": "rp-001.cross-system-common.v1",
+  "source": {
+    "repository": "Thomas-Baasch/peter-system-code",
+    "branch": "peter-003-import",
+    "commit": "c895f8745b3d7285da5eb7c1af896680903fd681",
+    "test_path": "tests/test_rp_001_continuity_contract.py",
+    "test_blob_sha": "3511a0146e2716f091ea4979bfe8ef49491b9b8f"
+  },
+  "role_boundary": {
+    "included": "classification semantics shared by PETER and an independent read-only home-system projection",
+    "peter_only": [
+      "C-05 reported_status_ref reconciliation/conflict_ref construction",
+      "C-08 multi-contract reconciliation/conflict_ref construction",
+      "C-12 event replay/idempotency bookkeeping"
+    ]
+  },
+  "cases": [
+    {
+      "id": "C-01",
+      "changes": {
+        "continuation_policy": "FROZEN",
+        "work_state": "PAUSED_DURCH_OWNER",
+        "source_health": "STALE",
+        "next_contract_ref": null,
+        "next_meaningful_step": null,
+        "last_progress_evidence": []
+      },
+      "expected_classification": "EXPECTED_FROZEN"
+    },
+    {
+      "id": "C-02",
+      "changes": {},
+      "expected_classification": "CONTINUATION_CANDIDATE"
+    },
+    {
+      "id": "C-03",
+      "changes": {
+        "active_run_refs": ["github-run:123"]
+      },
+      "expected_classification": "ACTIVE_RUN"
+    },
+    {
+      "id": "C-04",
+      "changes": {
+        "source_health": "UNREACHABLE"
+      },
+      "expected_classification": "DEGRADED_SOURCE"
+    },
+    {
+      "id": "C-06",
+      "changes": {
+        "continuation_policy": "OWNER_REQUIRED",
+        "owner_gate": "K2",
+        "decision_ref": "decision:owner-42"
+      },
+      "expected_classification": "OWNER_DECISION_K2"
+    },
+    {
+      "id": "C-07-PARKED",
+      "changes": {
+        "continuation_policy": "PARKED"
+      },
+      "expected_classification": "MANUAL_OR_PARKED"
+    },
+    {
+      "id": "C-07-MANUAL",
+      "changes": {
+        "continuation_policy": "MANUAL_ON_DEMAND"
+      },
+      "expected_classification": "MANUAL_OR_PARKED"
+    },
+    {
+      "id": "WAITING-EXPECTED",
+      "changes": {
+        "continuation_policy": "WAITING_EXPECTED",
+        "source_health": "STALE"
+      },
+      "expected_classification": "WAITING_CORRECT"
+    },
+    {
+      "id": "SOURCE-CONFLICT",
+      "changes": {
+        "source_health": "CONFLICT"
+      },
+      "expected_classification": "SOURCE_CONFLICT"
+    },
+    {
+      "id": "AUTONOMOUS-MISSING-NEXT",
+      "changes": {
+        "next_contract_ref": null,
+        "next_meaningful_step": null,
+        "last_progress_evidence": []
+      },
+      "expected_classification": "DEGRADED_SOURCE"
+    }
+  ]
+}
