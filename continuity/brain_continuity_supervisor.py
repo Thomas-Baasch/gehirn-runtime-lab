@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import json
 import os
@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "continuity" / "brain-continuity-contract.json"
+CLOCK_SKEW = timedelta(seconds=30)
 
 
 class ContinuityState(str, Enum):
@@ -120,7 +121,7 @@ def _fresh_matching_progress(
     now: datetime,
     recent_commits: Sequence[CommitObservation],
 ) -> CommitObservation | None:
-    matching = [commit for commit in recent_commits if _commit_matches(commit, contract)]
+    matching = [commit for commit in recent_commits if _commit_matches(commit, contract) and commit.committed_at <= now + CLOCK_SKEW]
     if not matching:
         return None
     latest = max(matching, key=lambda commit: commit.committed_at)
@@ -140,6 +141,16 @@ def evaluate(
 
     if contract.policy != "AUTONOMOUS_EXPECTED_WHEN_NEXT_CONTRACT_FROZEN":
         return Decision(ContinuityState.UNKNOWN, "unknown_continuation_policy", active_run_count)
+
+    timestamps = [now, contract.frozen_at, *(commit.committed_at for commit in recent_commits)]
+    if any(not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None for value in timestamps):
+        return Decision(ContinuityState.UNKNOWN, "timestamp_timezone_required", active_run_count)
+    if type(active_run_count) is not int or active_run_count < 0:
+        return Decision(ContinuityState.UNKNOWN, "active_run_count_invalid", 0)
+    if contract.frozen_at > now + CLOCK_SKEW:
+        return Decision(ContinuityState.UNKNOWN, "frozen_contract_in_future", active_run_count)
+    if any(_commit_matches(commit, contract) and commit.committed_at > now + CLOCK_SKEW for commit in recent_commits):
+        return Decision(ContinuityState.UNKNOWN, "matching_progress_commit_in_future", active_run_count)
 
     if active_run_count > 0:
         return Decision(ContinuityState.WORKING, "active_non_supervisor_run_present", active_run_count)

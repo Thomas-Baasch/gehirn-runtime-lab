@@ -38,10 +38,13 @@ def evidence(w: WorkItem, state: str, **kw) -> DownstreamEvidence:
     return DownstreamEvidence(**values)
 
 
-def uncertain_ledger(path: Path, w: WorkItem) -> DurableContinuationLedger:
+def uncertain_ledger(path: Path, w: WorkItem, downstream_id: str | None = None) -> DurableContinuationLedger:
     led = DurableContinuationLedger(path)
-    led.claim(w)
-    led.mark_reconcile_required(w, "synthetic_uncertain_outcome")
+    claim = led.claim(w)
+    led.bind_downstream_receipt(w, claim_token=claim.claim_token, target=TARGET,
+                                downstream_id=downstream_id or f"run-{w.dedupe_key}",
+                                receipt_source_ref=f"synthetic:dispatch:{w.dedupe_key}")
+    led.mark_reconcile_required(w, "synthetic_uncertain_outcome", claim_token=claim.claim_token)
     return led
 
 
@@ -68,7 +71,7 @@ def main() -> int:
         r12=DownstreamReconciler(l1).reconcile(w1,target=TARGET,evidence=[evidence(w1,"SUCCEEDED")]); record("DR-12",r12.status,ReconcileStatus.NOOP_ALREADY_SUCCEEDED,str(l1.state(w1.dedupe_key)))
         # Confirmed local success may never be downgraded by stale/failure evidence.
         r13=DownstreamReconciler(l1).reconcile(w1,target=TARGET,evidence=[evidence(w1,"FAILED",source_health="STALE")]); record("DR-13",r13.status,ReconcileStatus.NOOP_ALREADY_SUCCEEDED,str(l1.state(w1.dedupe_key)))
-        w14=item("active-over-stale"); l14=uncertain_ledger(root/"14.sqlite",w14); r14=DownstreamReconciler(l14).reconcile(w14,target=TARGET,evidence=[evidence(w14,"RUNNING",downstream_id="fresh"),evidence(w14,"FAILED",downstream_id="old",source_health="STALE")]); record("DR-14",r14.status,ReconcileStatus.WAIT_DOWNSTREAM)
+        w14=item("active-over-stale"); l14=uncertain_ledger(root/"14.sqlite",w14,downstream_id="fresh"); r14=DownstreamReconciler(l14).reconcile(w14,target=TARGET,evidence=[evidence(w14,"RUNNING",downstream_id="fresh"),evidence(w14,"FAILED",downstream_id="old",source_health="STALE")]); record("DR-14",r14.status,ReconcileStatus.WAIT_DOWNSTREAM)
         w15=item("unknown"); l15=uncertain_ledger(root/"15.sqlite",w15); record("DR-15",DownstreamReconciler(l15).reconcile(w15,target=TARGET,evidence=[evidence(w15,"UNKNOWN")]).status,ReconcileStatus.RECONCILE_REQUIRED)
         corrupt_blocked=False
         try:

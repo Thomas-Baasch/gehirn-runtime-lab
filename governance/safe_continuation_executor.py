@@ -8,6 +8,18 @@ OWNER_ACTIONS = frozenset({"MERGE", "EXTERNAL_SEND", "PAYMENT", "PERMISSION_CHAN
 FORBIDDEN_ACTIONS = OWNER_ACTIONS | frozenset({"DELETE"})
 
 
+class UncertainDispatchOutcome(RuntimeError):
+    """The downstream effect may have happened; local success is unproven."""
+
+
+class NoEffectDispatchError(RuntimeError):
+    """An adapter proved that no downstream action was accepted or performed.
+
+    Use only with explicit pre-effect rejection or verified no-effect evidence.
+    A timeout, a generic exception, or a false return value is not that proof.
+    """
+
+
 @dataclass(frozen=True)
 class WorkItem:
     work_id: str
@@ -38,6 +50,30 @@ class ExecutionDecision:
     reason: str
 
 
+def work_item_input_error(item: WorkItem) -> str | None:
+    """Validate runtime input instead of relying on dataclass annotations."""
+    if not isinstance(item, WorkItem):
+        return "work_item_type_invalid"
+    for name in ("safe_internal_next", "safe_recovery", "reversible", "external_effect",
+                 "owner_gate", "stop_latch", "circuit_open"):
+        if type(getattr(item, name)) is not bool:
+            return f"{name}_must_be_bool"
+    for name in ("retry_count", "retry_limit"):
+        value = getattr(item, name)
+        if type(value) is not int or value < 0:
+            return f"{name}_must_be_nonnegative_int"
+    for name in ("work_id", "home_system", "state", "continuation_policy", "source_health",
+                 "runtime_status", "action_class", "dedupe_key"):
+        value = getattr(item, name)
+        if not isinstance(value, str) or not value.strip():
+            return f"{name}_must_be_nonblank_text"
+    for name in ("requested_permissions", "minimum_permissions"):
+        value = getattr(item, name)
+        if not isinstance(value, frozenset) or any(not isinstance(p, str) or not p.strip() for p in value):
+            return f"{name}_must_be_frozen_text_set"
+    return None
+
+
 class SafeContinuationExecutor:
     """Fail-closed, product-neutral continuation decision/execution core.
 
@@ -50,9 +86,13 @@ class SafeContinuationExecutor:
         self.dispatch_callback = dispatch_callback
         self.permission_allowlist = permission_allowlist
         self.completed_dedupe_keys: set[str] = set()
+        self.uncertain_dedupe_keys: set[str] = set()
         self.audit: list[dict] = []
 
     def decide(self, item: WorkItem) -> ExecutionDecision:
+        input_error = work_item_input_error(item)
+        if input_error:
+            return ExecutionDecision("FAIL_CLOSED", False, input_error)
         # 1) STOPP / owner gate
         if item.stop_latch:
             return ExecutionDecision("STOPPED", False, "stop_latch_active")
@@ -90,6 +130,8 @@ class SafeContinuationExecutor:
         # 5) dedupe/idempotency
         if item.dedupe_key in self.completed_dedupe_keys:
             return ExecutionDecision("NOOP_DUPLICATE", False, "dedupe_key_already_completed")
+        if item.dedupe_key in self.uncertain_dedupe_keys:
+            return ExecutionDecision("RECONCILE_REQUIRED", False, "prior_dispatch_outcome_uncertain")
 
         # 6) action allowlist
         if item.action_class in OWNER_ACTIONS:
@@ -123,6 +165,8 @@ class SafeContinuationExecutor:
 
     def execute(self, item: WorkItem) -> ExecutionDecision:
         decision = self.decide(item)
+        if not isinstance(item, WorkItem):
+            return decision
         self.audit.append({"event": "decision", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "outcome": decision.outcome, "dispatch": decision.dispatch})
         if not decision.dispatch:
             return decision
@@ -131,13 +175,18 @@ class SafeContinuationExecutor:
         # in-memory append-only list; real adapters need their own durable audit.
         self.audit.append({"event": "dispatch_attempt", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "action": item.action_class, "retry_count": item.retry_count})
         try:
-            success = bool(self.dispatch_callback(item))
-        except Exception as exc:
+            success = self.dispatch_callback(item)
+        except NoEffectDispatchError as exc:
             self.audit.append({"event": "dispatch_failure", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "error": repr(exc)})
-            return ExecutionDecision("DISPATCH_FAILED_RETRYABLE", False, "callback_exception")
-        if success:
+            return ExecutionDecision("DISPATCH_FAILED_RETRYABLE", False, "adapter_proved_no_effect")
+        except Exception as exc:
+            self.uncertain_dedupe_keys.add(item.dedupe_key)
+            self.audit.append({"event": "dispatch_failure", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "error": repr(exc)})
+            return ExecutionDecision("RECONCILE_REQUIRED", False, "callback_outcome_uncertain")
+        if success is True:
             self.completed_dedupe_keys.add(item.dedupe_key)
             self.audit.append({"event": "dispatch_success", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "action": item.action_class})
             return decision
-        self.audit.append({"event": "dispatch_failure", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "error": "callback_returned_false"})
-        return ExecutionDecision("DISPATCH_FAILED_RETRYABLE", False, "callback_returned_false")
+        self.uncertain_dedupe_keys.add(item.dedupe_key)
+        self.audit.append({"event": "dispatch_failure", "work_id": item.work_id, "dedupe_key": item.dedupe_key, "error": "callback_did_not_confirm_success"})
+        return ExecutionDecision("RECONCILE_REQUIRED", False, "callback_did_not_confirm_success")

@@ -5,7 +5,7 @@ import random
 from dataclasses import replace
 from pathlib import Path
 
-from governance.safe_continuation_executor import SafeContinuationExecutor, WorkItem
+from governance.safe_continuation_executor import NoEffectDispatchError, SafeContinuationExecutor, WorkItem
 
 CONTRACT_DRIVE_ID = "1xtyngTOQAy6QfcDddje_HInAIBZfz5NstB9QdGmT0c4"
 CONTRACT_SHA256 = "b437d928e0aa27839d0179da6a968d783324bcf41580c50079592d667d56c124"
@@ -93,7 +93,7 @@ def main() -> int:
     retry_calls: list[int] = []
     def failing_callback(item: WorkItem) -> bool:
         retry_calls.append(item.retry_count)
-        return False
+        raise NoEffectDispatchError("synthetic rejection before any effect")
     retry_executor = SafeContinuationExecutor(failing_callback)
     r0 = retry_executor.execute(base(work_id="retry", dedupe_key="retry-key", retry_count=0, retry_limit=2))
     r1 = retry_executor.execute(base(work_id="retry", dedupe_key="retry-key", retry_count=1, retry_limit=2))
@@ -106,6 +106,7 @@ def main() -> int:
     rng = random.Random(RANDOM_SEED)
     random_executor = SafeContinuationExecutor(lambda item: True)
     forbidden_dispatches = 0
+    missed_allowed_dispatches = 0
     dispatches = 0
     outcomes: dict[str, int] = {}
     policies = ["AUTONOMOUS_EXPECTED","MANUAL_ON_DEMAND","PARKED","WAITING_EXTERNAL","OWNER_REQUIRED","UNKNOWN"]
@@ -114,6 +115,13 @@ def main() -> int:
     runtimes = ["IDLE","RUNNING","FAILED","STALE","UNKNOWN"]
     actions = ["INTERNAL_CONTINUE","INTERNAL_RECOVERY","MERGE","EXTERNAL_SEND","PAYMENT","DELETE","PERMISSION_CHANGE","POLICY_CHANGE","PRODUCTION_PUBLISH","UNKNOWN_ACTION"]
     permission_sets = [frozenset(), frozenset({"contents:read"}), frozenset({"actions:write"}), frozenset({"contents:read","actions:write"}), frozenset({"admin"})]
+    single_gate_faults = [
+        {"stop_latch": True}, {"owner_gate": True}, {"source_health": "STALE"},
+        {"state": "DONE"}, {"continuation_policy": "PARKED"}, {"runtime_status": "UNKNOWN"},
+        {"safe_internal_next": False}, {"action_class": "PAYMENT"}, {"reversible": False},
+        {"external_effect": True}, {"minimum_permissions": frozenset({"admin"})},
+        {"circuit_open": True}, {"retry_count": 3},
+    ]
 
     def legal_dispatch(item: WorkItem) -> bool:
         if item.stop_latch or item.owner_gate or item.source_health != "FRESH": return False
@@ -142,11 +150,22 @@ def main() -> int:
             dedupe_key=f"random-{i}", retry_count=rng.randint(0,5), retry_limit=retry_limit, circuit_open=rng.choice([True,False]),
             requested_permissions=requested, minimum_permissions=minimum,
         )
+        # Exercise both allowed paths and near-boundary failures deliberately;
+        # fully independent random flags almost never form a valid dispatch.
+        if i % 5 == 0:
+            item = base(work_id=f"R-{i}", dedupe_key=f"random-{i}")
+            if i % 10 == 0:
+                item = replace(item, runtime_status=rng.choice(["FAILED", "STALE"]),
+                               action_class="INTERNAL_RECOVERY", safe_internal_next=False, safe_recovery=True)
+        elif i % 5 == 1:
+            item = base(work_id=f"R-{i}", dedupe_key=f"random-{i}", **rng.choice(single_gate_faults))
         decision = random_executor.decide(item)
         outcomes[decision.outcome] = outcomes.get(decision.outcome,0) + 1
         if decision.dispatch:
             dispatches += 1
             if not legal_dispatch(item): forbidden_dispatches += 1
+        elif legal_dispatch(item):
+            missed_allowed_dispatches += 1
 
     random_safe = forbidden_dispatches == 0
     acceptance = {
@@ -156,6 +175,9 @@ def main() -> int:
         "retry_limit_circuit_breaker": retry_limit_safe,
         "audit_attempt_and_failure_preserved": audit_failure_preserved,
         "random_100k_zero_forbidden_dispatches": random_safe,
+        "random_allowed_paths_exercised": dispatches >= RANDOM_CASES // 5,
+        "random_no_missed_allowed_dispatches": missed_allowed_dispatches == 0,
+        "random_continue_and_recovery_exercised": outcomes.get("DISPATCH_CONTINUE", 0) > 0 and outcomes.get("DISPATCH_RECOVERY", 0) > 0,
         "no_real_external_dispatch_in_lab": True,
     }
     passed = all(acceptance.values())
@@ -165,7 +187,7 @@ def main() -> int:
         "contract":{"drive_id":CONTRACT_DRIVE_ID,"sha256":CONTRACT_SHA256},
         "deterministic":deterministic,
         "callback_calls":callback_calls,
-        "randomized":{"cases":RANDOM_CASES,"seed":RANDOM_SEED,"dispatches":dispatches,"forbidden_dispatches":forbidden_dispatches,"outcomes":outcomes},
+        "randomized":{"cases":RANDOM_CASES,"seed":RANDOM_SEED,"dispatches":dispatches,"forbidden_dispatches":forbidden_dispatches,"missed_allowed_dispatches":missed_allowed_dispatches,"outcomes":outcomes},
         "acceptance":acceptance,
         "result":"PASS" if passed else "FAIL",
         "qualification":"PRODUCT_NEUTRAL_SAFE_CONTINUATION_EXECUTOR_CORE_LAB_PASS" if passed else "NOT_QUALIFIED",

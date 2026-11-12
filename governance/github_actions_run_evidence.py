@@ -55,7 +55,7 @@ _FAILURE_CONCLUSIONS = frozenset(
 
 
 def _aware(dt: datetime) -> bool:
-    return dt.tzinfo is not None and dt.utcoffset() is not None
+    return isinstance(dt, datetime) and dt.tzinfo is not None and dt.utcoffset() is not None
 
 
 def _require_text(value: Any, key: str) -> str:
@@ -98,7 +98,7 @@ class GitHubActionsRunEvidenceAdapter:
     @staticmethod
     def _intent_valid(intent: GitHubDispatchIntent) -> bool:
         return (
-            isinstance(intent.workflow_id, int)
+            type(intent.workflow_id) is int
             and intent.workflow_id > 0
             and all(
                 isinstance(v, str) and bool(v.strip())
@@ -121,10 +121,12 @@ class GitHubActionsRunEvidenceAdapter:
         )
 
     def _matches(self, intent: GitHubDispatchIntent, raw: Mapping[str, Any]) -> bool:
+        if not isinstance(raw, Mapping):
+            return False
         try:
             if _repo_name(raw) != intent.repository:
                 return False
-            if int(raw.get("workflow_id")) != intent.workflow_id:
+            if type(raw.get("workflow_id")) is not int or raw.get("workflow_id") != intent.workflow_id:
                 return False
             if _require_text(raw.get("event"), "event") != intent.expected_event:
                 return False
@@ -146,7 +148,7 @@ class GitHubActionsRunEvidenceAdapter:
     def _identity(raw: Mapping[str, Any]) -> tuple[int, int]:
         rid = raw.get("id")
         attempt = raw.get("run_attempt", 1)
-        if not isinstance(rid, int) or rid <= 0 or not isinstance(attempt, int) or attempt <= 0:
+        if type(rid) is not int or rid <= 0 or type(attempt) is not int or attempt <= 0:
             raise ValueError("invalid_run_identity")
         return rid, attempt
 
@@ -193,7 +195,14 @@ class GitHubActionsRunEvidenceAdapter:
         if age > self.max_source_age or age < -self.clock_skew:
             return AdapterDecision(AdapterStatus.SOURCE_STALE, "github_source_not_fresh")
 
-        rows = list(raw_runs)
+        try:
+            rows = list(raw_runs)
+        except Exception:
+            return AdapterDecision(AdapterStatus.SOURCE_UNAVAILABLE, "run_list_invalid")
+        if any(not isinstance(raw, Mapping) for raw in rows):
+            # A malformed row may conceal another exact run. Do not silently
+            # discard it and claim that the remaining match is unique.
+            return AdapterDecision(AdapterStatus.SOURCE_UNAVAILABLE, "run_row_not_an_object")
         exact = [raw for raw in rows if self._matches(intent, raw)]
         if not exact:
             status = (
@@ -221,6 +230,10 @@ class GitHubActionsRunEvidenceAdapter:
             return AdapterDecision(AdapterStatus.FAIL_CLOSED, str(exc))
         latest_at = max(ts for ts, _ in stamped)
         latest = [raw for ts, raw in stamped if ts == latest_at]
+        if any(not isinstance(raw.get("status"), str) or
+               (raw.get("conclusion") is not None and not isinstance(raw.get("conclusion"), str))
+               for raw in latest):
+            return AdapterDecision(AdapterStatus.FAIL_CLOSED, "run_state_type_invalid")
         signatures = {(raw.get("status"), raw.get("conclusion")) for raw in latest}
         if len(signatures) != 1:
             return AdapterDecision(AdapterStatus.CONFLICT_BLOCKED, "conflicting_latest_same_run")
@@ -230,7 +243,7 @@ class GitHubActionsRunEvidenceAdapter:
             run_id, attempt = self._identity(raw)
             state, created, updated = self._state(raw)
             run_number = raw.get("run_number")
-            if not isinstance(run_number, int) or run_number <= 0:
+            if type(run_number) is not int or run_number <= 0:
                 raise ValueError("invalid_run_number")
             if updated > source_fetched_at + self.clock_skew:
                 raise ValueError("run_updated_after_source_fetch")
