@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 import re
+import hashlib
+import json
 
 
 class AuthorityStatus(str, Enum):
@@ -104,6 +106,9 @@ class AuthorityDecision:
     write_executed: bool = False
     authority_created: bool = False
     real_dispatch_authority: str = "NOT_GRANTED"
+    evidence_sha256: str | None = None
+    checked_preflight: PreflightEvidence | None = None
+    checked_at: datetime | None = None
 
 
 _PREFLIGHT_STATUS = "READY_FOR_SEPARATELY_AUTHORIZED_SINGLE_PILOT"
@@ -189,6 +194,20 @@ def _scope_pairs(intent: PilotIntent, grant: OwnerAuthorizationEvidence) -> tupl
     )
 
 
+def authority_evidence_sha256(
+    intent: PilotIntent, preflight: PreflightEvidence, grant: OwnerAuthorizationEvidence,
+) -> str:
+    """Bind the decision to every supplied evidence field, including its times."""
+    def encode(value: object) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        raise TypeError("unsupported_authority_evidence_type")
+    payload = {"intent": asdict(intent), "preflight": asdict(preflight), "grant": asdict(grant)}
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                     allow_nan=False, default=encode).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 def validate_single_pilot_authority(
     intent: PilotIntent,
     preflight: PreflightEvidence,
@@ -201,8 +220,14 @@ def validate_single_pilot_authority(
     This function cannot create authority or perform a dispatch. A VALID result
     only permits a separate one-shot dispatcher layer to continue its own gates.
     """
+    if not isinstance(intent, PilotIntent) or not isinstance(preflight, PreflightEvidence) or not isinstance(grant, OwnerAuthorizationEvidence):
+        return AuthorityDecision(AuthorityStatus.FAIL_CLOSED, "authority_evidence_type_invalid")
     if not _aware(as_of):
         return AuthorityDecision(AuthorityStatus.FAIL_CLOSED, "as_of_timezone_required")
+    if type(grant.revoked) is not bool:
+        return AuthorityDecision(AuthorityStatus.FAIL_CLOSED, "revoked_must_be_bool")
+    if type(grant.expected_workflow_id) is not int:
+        return AuthorityDecision(AuthorityStatus.FAIL_CLOSED, "grant_workflow_id_must_be_int")
 
     if not all(_nonblank(v) for v in _intent_strings(intent)):
         return AuthorityDecision(AuthorityStatus.FAIL_CLOSED, "intent_field_missing")
@@ -287,4 +312,7 @@ def validate_single_pilot_authority(
         "exact_verified_single_use_owner_authorization_evidence_matches_ready_preflight",
         valid=True,
         real_dispatch_authority="NOT_GRANTED",
+        evidence_sha256=authority_evidence_sha256(intent, preflight, grant),
+        checked_preflight=preflight,
+        checked_at=as_of,
     )

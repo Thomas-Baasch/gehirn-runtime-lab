@@ -269,13 +269,17 @@ def main() -> int:
 
     composition_success = False; composition_external_failure_blocked = False
     with tempfile.TemporaryDirectory() as td:
-        ledger = DurableContinuationLedger(Path(td) / "ledger.sqlite"); item = work_item(r); ledger.claim(item); reconciler = DownstreamReconciler(ledger)
+        ledger = DurableContinuationLedger(Path(td) / "ledger.sqlite"); item = work_item(r); claim = ledger.claim(item); reconciler = DownstreamReconciler(ledger)
+        ledger.bind_downstream_receipt(item, claim_token=claim.claim_token, target=r.target,
+                                       downstream_id=r.downstream_run_id, receipt_source_ref=r.receipt_source_ref)
         good = adapter.evaluate(i, r, run, [artifact(r)], source_fetched_at=fetched, as_of=as_of)
         if good.evidence:
             first_rec = reconciler.reconcile(item, target=r.target, evidence=[good.evidence]); second_rec = reconciler.reconcile(item, target=r.target, evidence=[good.evidence])
             composition_success = first_rec.status is ReconcileStatus.RECONCILED_SUCCEEDED and second_rec.status is ReconcileStatus.NOOP_ALREADY_SUCCEEDED and ledger.state(item.dedupe_key).status == "SUCCEEDED"
 
-        r2 = replace(r, work_id="work-oa-002", dedupe_key="dedupe-oa-002", downstream_run_id="9002"); run2 = terminal_run(r2); item2 = work_item(r2); ledger.claim(item2)
+        r2 = replace(r, work_id="work-oa-002", dedupe_key="dedupe-oa-002", downstream_run_id="9002"); run2 = terminal_run(r2); item2 = work_item(r2); claim2 = ledger.claim(item2)
+        ledger.bind_downstream_receipt(item2, claim_token=claim2.claim_token, target=r2.target,
+                                       downstream_id=r2.downstream_run_id, receipt_source_ref=r2.receipt_source_ref)
         p2 = payload(r2, outcome_state="FAILED", effect_scope="EXTERNAL_OR_UNKNOWN", effect_confirmed=False, external_effect_possible=True, external_effect_proven=False)
         b2 = artifact(r2, p2, run_id="9002", artifact_id=7003)
         failed = adapter.evaluate(i, r2, run2, [b2], source_fetched_at=fetched, as_of=as_of)

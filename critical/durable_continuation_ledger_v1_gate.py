@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from governance.durable_continuation_ledger import DurableContinuationLedger, DurableSafeContinuationExecutor, UncertainDispatchOutcome
-from governance.safe_continuation_executor import WorkItem
+from governance.safe_continuation_executor import NoEffectDispatchError, WorkItem
 
 CONTRACT_DRIVE_ID = "1pzUowtAZXeEGbcK7M6FancTiR-B3d_f3Y1KOzgJMqB4"
 CONTRACT_SHA256 = "c526614c461434afb2b191fea586c5e152bcedf8e2a32de5e780bcf4b1d7edd4"
@@ -27,6 +27,10 @@ def item(key: str, **overrides) -> WorkItem:
     )
     values.update(overrides)
     return WorkItem(**values)
+
+
+def proved_no_effect(item: WorkItem) -> bool:
+    raise NoEffectDispatchError("synthetic rejection before any effect")
 
 
 def main() -> int:
@@ -80,9 +84,9 @@ def main() -> int:
         race_state = DurableContinuationLedger(db).state("race")
         record("DL-03", len(concurrent_calls) == 1 and race_state is not None and race_state.status == "SUCCEEDED" and sorted(results) in [sorted(["DISPATCH_CONTINUE","RECONCILE_REQUIRED"]), sorted(["DISPATCH_CONTINUE","NOOP_DUPLICATE"])], f"calls={concurrent_calls};results={results};state={race_state}")
 
-        # DL-04 callback false -> durable failed + audit.
+        # DL-04 explicitly proven no-effect rejection -> retryable + audit.
         fail_ledger = DurableContinuationLedger(db)
-        fail_ex = DurableSafeContinuationExecutor(fail_ledger, lambda w: False)
+        fail_ex = DurableSafeContinuationExecutor(fail_ledger, proved_no_effect)
         rf = fail_ex.execute(item("retry", retry_limit=3))
         sf = fail_ledger.state("retry")
         audit_after_fail = fail_ledger.audit()
@@ -96,7 +100,7 @@ def main() -> int:
         record("DL-05", rr.outcome == "DISPATCH_CONTINUE" and retry_calls == ["retry"] and sr is not None and sr.status == "SUCCEEDED" and sr.attempt_count == 2, str(sr))
 
         # DL-06 retry limit opens circuit.
-        limit_ex = DurableSafeContinuationExecutor(DurableContinuationLedger(db), lambda w: False)
+        limit_ex = DurableSafeContinuationExecutor(DurableContinuationLedger(db), proved_no_effect)
         limit_ex.execute(item("limit", retry_limit=1))
         limit_calls: list[str] = []
         limit_ex2 = DurableSafeContinuationExecutor(DurableContinuationLedger(db), lambda w: limit_calls.append(w.dedupe_key) or True)

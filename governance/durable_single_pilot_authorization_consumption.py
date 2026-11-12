@@ -15,6 +15,8 @@ from governance.m4_single_pilot_authority_boundary import (
     AuthorityStatus,
     OwnerAuthorizationEvidence,
     PilotIntent,
+    PreflightEvidence,
+    validate_single_pilot_authority,
 )
 
 
@@ -202,26 +204,40 @@ class DurableSinglePilotAuthorizationConsumptionLedger:
         )
 
     @staticmethod
-    def _authority_ok(decision: AuthorityDecision, grant: OwnerAuthorizationEvidence, *, as_of: datetime) -> bool:
+    def _authority_ok(decision: AuthorityDecision, intent: PilotIntent, grant: OwnerAuthorizationEvidence, *, as_of: datetime) -> bool:
+        if not isinstance(decision, AuthorityDecision):
+            return False
         if (
             decision.status is not _VALID_AUTHORITY
-            or not decision.valid
-            or decision.dispatch_executed
-            or decision.claim_executed
-            or decision.retry_executed
-            or decision.write_executed
-            or decision.authority_created
+            or decision.valid is not True
+            or decision.dispatch_executed is not False
+            or decision.claim_executed is not False
+            or decision.retry_executed is not False
+            or decision.write_executed is not False
+            or decision.authority_created is not False
+            or decision.real_dispatch_authority != "NOT_GRANTED"
         ):
+            return False
+        if not isinstance(intent, PilotIntent) or not isinstance(grant, OwnerAuthorizationEvidence):
             return False
         if not _aware(as_of) or not _aware(grant.issued_at) or not _aware(grant.expires_at):
             return False
-        if grant.revoked or grant.max_dispatches != 1 or grant.used_dispatches != 0:
+        if not isinstance(decision.checked_preflight, PreflightEvidence) or not _aware(decision.checked_at):
+            return False
+        if as_of < decision.checked_at:
+            return False
+        if grant.revoked is not False or type(grant.max_dispatches) is not int or grant.max_dispatches != 1 or type(grant.used_dispatches) is not int or grant.used_dispatches != 0:
             return False
         if as_of < grant.issued_at or as_of > grant.expires_at:
             return False
         if not _nonblank(grant.grant_id) or not _sha(grant.source_evidence_sha256) or not _sha(grant.preflight_snapshot_sha256):
             return False
-        return True
+        fresh = validate_single_pilot_authority(intent, decision.checked_preflight, grant, as_of=as_of)
+        return (
+            fresh.valid is True
+            and _sha(decision.evidence_sha256)
+            and decision.evidence_sha256 == fresh.evidence_sha256
+        )
 
     @staticmethod
     def _record_from_row(row: sqlite3.Row) -> ConsumptionRecord:
@@ -257,7 +273,7 @@ class DurableSinglePilotAuthorizationConsumptionLedger:
         *,
         as_of: datetime,
     ) -> ConsumptionDecision:
-        if not self._authority_ok(authority_decision, grant, as_of=as_of):
+        if not self._authority_ok(authority_decision, intent, grant, as_of=as_of):
             return ConsumptionDecision(ConsumptionStatus.AUTHORITY_BLOCKED, "upstream_authority_not_exactly_valid")
 
         scope_sha = authorization_scope_sha256(intent, grant)
